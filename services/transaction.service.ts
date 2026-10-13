@@ -4,7 +4,7 @@ import { requireBranchAccess } from "@/lib/authorization";
 import { AppError, Errors } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { connectDB } from "@/lib/mongodb";
-import { escapeRegex, extractRefId } from "@/lib/utils";
+import { computeServicePricing, escapeRegex, extractRefId } from "@/lib/utils";
 import BranchModel from "@/models/Branch";
 import CustomerModel from "@/models/Customer";
 import ServiceModel from "@/models/Service";
@@ -14,10 +14,6 @@ import type {
   CreateTransactionInput,
   ListTransactionsQuery,
 } from "@/validations/transaction.schema";
-
-function roundCurrency(value: number): number {
-  return Math.round(value);
-}
 
 function formatDateInTimezone(date: Date, timezone: string): string {
   try {
@@ -87,20 +83,8 @@ export async function createTransaction(
     }
   }
 
-  const subtotal = service.price;
-  if (input.discountAmount > subtotal) {
-    throw Errors.businessRule("Discount cannot exceed the service price.");
-  }
-
-  const total = subtotal - input.discountAmount;
-  // Split the post-discount total so a discount is shared proportionally
-  // rather than one side absorbing it entirely; employeeRevenue is the
-  // remainder (not its own percentage-of-total calc) so the two always sum
-  // exactly to `total` with no floating-point drift.
-  const ownerRevenue = roundCurrency(
-    total * (service.revenueSharing.ownerPercentage / 100),
-  );
-  const employeeRevenue = total - ownerRevenue;
+  const { subtotal, total, ownerRevenue, employeeRevenue } =
+    computeServicePricing(service, input.discountAmount);
 
   const transactionCode = await generateUniqueTransactionCode(branch.timezone);
 

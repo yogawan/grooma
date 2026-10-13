@@ -1,5 +1,8 @@
 import { model, models, Schema } from "mongoose";
 
+// §10.3: changedBy (requester), reason, before/after snapshots, changedAt,
+// approvedBy (reviewer), approvalReference. Append-only via the approval
+// API — nothing in this codebase ever updates or removes an existing entry.
 const ChangeHistorySchema = new Schema(
   {
     changedBy: {
@@ -14,7 +17,12 @@ const ChangeHistorySchema = new Schema(
       trim: true,
     },
 
-    changes: {
+    before: {
+      type: Schema.Types.Mixed,
+      required: true,
+    },
+
+    after: {
       type: Schema.Types.Mixed,
       required: true,
     },
@@ -22,6 +30,17 @@ const ChangeHistorySchema = new Schema(
     changedAt: {
       type: Date,
       default: Date.now,
+    },
+
+    approvedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    approvalReference: {
+      type: String,
+      trim: true,
     },
   },
   { _id: false },

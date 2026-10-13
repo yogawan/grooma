@@ -194,32 +194,57 @@ Simpan di `.env.local` (sudah di-gitignore lewat pola `.env*`), buat juga `.env.
 
 ### Phase 4 — Inventory
 **Models:**
-- [ ] `models/InventoryMovement.ts` baru (§5.7)
+- [x] `models/InventoryMovement.ts` baru (§5.7) — append-only (`createdAt` saja, tidak ada `updatedAt`)
 
 **Services:**
-- [ ] `services/inventory.service.ts` — stok tidak boleh negatif; update stok pakai conditional update (filter quantity terbaru) untuk cegah lost update (§5.6, §11.3); setiap perubahan stok wajib membuat `InventoryMovement` secara atomik — gunakan Mongo transaction jika replica set tersedia (§5.7)
+- [x] `services/inventory.service.ts` — stok tidak boleh negatif; `adjustStock` dibungkus `mongoose.startSession().withTransaction()` — lost-update prevention datang dari deteksi write-conflict NATIVE MongoDB (bukan manual conditional-filter seperti kalimat asli di baris ini; transaction sudah cukup dan juga dibutuhkan untuk atomicity Inventory+Movement, jadi satu mekanisme menutupi dua requirement sekaligus — lihat catatan di bawah); setiap perubahan stok (termasuk initial stock saat create, jika > 0) membuat `InventoryMovement` di transaction yang sama (§5.7)
 
-**Validations:** `validations/inventory.schema.ts`
+**Validations:** `validations/inventory.schema.ts` — update **tidak** menerima `quantity` sama sekali (hanya lewat stock-movements, supaya tidak bisa bypass audit trail); stock-movement pakai discriminated union: `IN`/`OUT` = delta relatif, `ADJUSTMENT` = angka absolut (lebih cocok untuk kasus stock-take)
 
 **API** (§7.10): list/create/detail/update/soft-delete item, `POST/GET /:id/stock-movements`
-- [ ] AGENT dibatasi ke `branch` miliknya sendiri; `branchId` dari client tidak bisa dipakai untuk akses branch lain (§7.10)
-- [ ] HOST boleh filter lintas branch via `branchId`
+- [x] AGENT dibatasi ke `branch` miliknya sendiri; `branchId` dari client tidak bisa dipakai untuk akses branch lain (§7.10)
+- [x] HOST boleh filter lintas branch via `branchId` (dan wajib isi `branchId` saat create, karena HOST tidak punya "branch sendiri")
+- [x] `DELETE /inventory/:id` adalah HTTP DELETE asli tapi soft-delete di baliknya (`isActive=false`) — beda dari Branch/Service/Customer di Phase 2 yang malah tidak punya route DELETE sama sekali
 
-**Tests** (§18 bucket Inventory) — termasuk test konkurensi lost-update
+**Catatan implementasi (di luar teks PRD eksplisit):**
+- Lost-update prevention pakai native MongoDB transaction write-conflict (`TransientTransactionError` → `withTransaction` auto-retry), bukan manual conditional-update-filter yang disebut literal di draft checklist awal — fungsinya sama (lost update tidak mungkin terjadi), tapi mekanismenya berbeda dan sekaligus menutupi requirement atomicity Inventory+InventoryMovement (§5.7) tanpa dua lapis logic terpisah. Asumsi: target deploy Atlas (selalu replica set, sesuai `mongodb+srv://` di §3), tidak ada fallback untuk standalone Mongo
+- Item baru dengan `quantity` awal > 0 otomatis membuat `InventoryMovement` (`movementType: IN`, reason "Initial stock on item creation") — PRD tidak eksplisit bilang create butuh movement record, tapi ini menutup celah audit (stok nonzero tanpa jejak asal)
+- `ADJUSTMENT` butuh `newQuantity` (absolut, bukan delta bertanda) — PRD tidak merinci bentuk inputnya, absolut dipilih karena lebih cocok untuk kasus stock-take/koreksi fisik
+- List inventory & stock-movements pakai pagination page/limit sederhana (bukan cursor) — konsisten dengan keputusan Transaction di Phase 3
+
+**Tests** (§18 bucket Inventory) — termasuk test konkurensi lost-update:
+- [ ] Skip — belum ada test runner (sama seperti phase sebelumnya). Logic transaction sudah diverifikasi lewat code review manual + `tsc`/`biome`/`next build`, tapi test konkurensi nyata (dua request paralel) belum bisa dijalankan tanpa test runner + Mongo replica set nyata. Revisit di Phase 7.
+
+**Exit criteria:** DoD §21 #11. **Tercapai secara kode**, catatan sama seperti Phase 3 — belum ada verifikasi end-to-end karena `MONGODB_URI` masih placeholder.
 
 **Exit criteria:** DoD §21 #11.
 
 ---
 
 ### Phase 5 — Approval
+**Models (tidak direncanakan di checklist awal, tapi diperlukan — lihat catatan):**
+- [x] `models/Transaction.ts` — `ChangeHistorySchema` diperbaiki: field `changes` (generic Mixed) diganti jadi `before`/`after`/`approvedBy`/`approvalReference` sesuai §10.3 persis. Gap ini berasal dari Phase 1 (dibuat sebelum §10.3 benar-benar dibaca detail); Phase 5 justru butuh bentuk yang tepat, jadi diperbaiki sekarang sebelum menulis approval logic di atasnya
+
 **Services:**
-- [ ] `services/approval.service.ts` — satu change request aktif per transaksi (§5.8, §10.2); requester tidak boleh approve pengajuannya sendiri; re-validasi state transaksi & request saat approve/reject; tulis hasil approve/reject ke `changeHistory` yang append-only (§10.3)
+- [x] `services/approval.service.ts` — satu change request aktif per transaksi (§5.8, §10.2); requester tidak boleh approve pengajuannya sendiri; re-validasi state transaksi & request saat approve (service/customer bisa saja berubah status antara submit dan review — §10.1 langkah 9); tulis hasil approve ke `changeHistory` yang append-only (§10.3); reject tidak menulis changeHistory sama sekali (tidak ada yang diterapkan ke transaksi, §10.1 langkah 11)
+- [x] `lib/utils.ts` — `computeServicePricing` diekstrak dari `transaction.service.ts` supaya approval (saat `serviceId`/`discountAmount` berubah) menghitung ulang `subtotal`/`total`/`ownerRevenue`/`employeeRevenue` dengan formula yang **persis sama** seperti pembuatan transaksi awal, bukan rumus kedua yang bisa drift
+
+**Validations:** `validations/approval.schema.ts` — `requestedChanges` dibatasi ke `serviceId`/`customerId`/`discountAmount`/`serviceHourType` saja (sengaja TIDAK termasuk `paymentMethod` — terlalu terikat ke flow gateway yang sudah berjalan — atau `branch`/`agent`/status fields yang punya mekanisme transisi sendiri); minimal satu field wajib diisi; reject mewajibkan `reviewNote` (§10.1 langkah 11: alasan penolakan wajib dicatat), approve opsional
 
 **API** (§7.9): submit change request, list pending (HOST), detail, approve, reject
+- [x] Submit: `POST /transactions/:id/change-requests` (HOST+AGENT, branch-scoped untuk AGENT)
+- [x] List pending, detail, approve, reject: semua di namespace top-level `/transaction-change-requests` (bukan nested di `/transactions/:id/...`) — `:id` di sini tetap ID transaksi, karena change request tersimpan sebagai subdokumen, bukan collection sendiri (§5.8)
+- [x] Detail: HOST bebas lihat, AGENT hanya kalau dia requester-nya sendiri (§7.9 "request owner if authorized")
 
-**Tests** (§18 bucket Approval)
+**Catatan implementasi (di luar teks PRD eksplisit):**
+- `submitChangeRequest` menolak submit untuk transaksi yang `transactionStatus: CANCELLED` — tidak eksplisit di PRD, tapi konsisten dengan guard terminal-state yang sudah ada di `completeTransaction`/`cancelTransaction`
+- `submitChangeRequest` juga re-validasi `serviceId`/`customerId` saat submit (fail-fast), bukan cuma saat approve — PRD cuma eksplisit minta re-validasi di langkah approve (§10.1 langkah 9), validasi di submit ini tambahan untuk UX
+- Karena `changeRequest` adalah satu subdokumen yang dipakai ulang (bukan collection terpisah), riwayat REJECTED tidak punya jejak permanen begitu transaksi yang sama menerima pengajuan baru — `changeHistory` cuma menyimpan perubahan yang BERHASIL diterapkan (approved), sesuai teks §10.3 "perubahan yang berhasil diterapkan". Ini keterbatasan MVP yang diakui PRD sendiri lewat frasa "untuk MVP" di §5.8, bukan bug
 
-**Exit criteria:** DoD §21 #9, #10.
+**Tests** (§18 bucket Approval):
+- [ ] Skip — belum ada test runner (sama seperti phase sebelumnya). Revisit di Phase 7.
+
+**Exit criteria:** DoD §21 #9, #10. **Tercapai secara kode**, catatan sama seperti Phase 3/4 — belum ada verifikasi end-to-end karena `MONGODB_URI` masih placeholder.
 
 ---
 

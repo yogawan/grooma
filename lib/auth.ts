@@ -19,9 +19,24 @@ export interface SessionUser {
   id: string;
   username: string;
   name: string;
-  role: "HOST" | "AGENT" | "GROOMA_ADMIN";
+  role: "HOST" | "AGENT";
   branch: string | null;
   status: "ACTIVE" | "INACTIVE";
+}
+
+// This service serves exactly two roles. Platform administration lives in a
+// separate admin backend that shares this database, so rows for roles this
+// service does not know about (GROOMA_ADMIN) really do exist in the `users`
+// collection — the boundary is that they can never hold a session here.
+//
+// Enforced at both entry points: login (app/api/v1/auth/login/route.ts) and
+// every subsequent request (getSessionUser below). The second check is what
+// matters for a session minted before a role was reassigned, or by a build
+// that predates this boundary.
+export const SERVICE_ROLES = ["HOST", "AGENT"] as const;
+
+export function isServiceRole(role: string): role is SessionUser["role"] {
+  return (SERVICE_ROLES as readonly string[]).includes(role);
 }
 
 // Matches both a hydrated Mongoose document and a `.lean()` plain object —
@@ -101,7 +116,7 @@ export async function getSessionUser(
 
   const user = await UserModel.findById(session.user).lean();
 
-  if (!user || user.status !== "ACTIVE") {
+  if (!user || user.status !== "ACTIVE" || !isServiceRole(user.role)) {
     return null;
   }
 

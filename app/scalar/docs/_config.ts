@@ -49,7 +49,7 @@ export const security = [{ sessionCookie: [] }];
 
 export const tags = [
   { name: "Authentication", description: "Login, logout, session management" },
-  { name: "Profile", description: "Own-profile read/update (all roles)" },
+  { name: "Profile", description: "Own-profile read/update (HOST/AGENT)" },
   { name: "Branches", description: "Branch management (HOST only)" },
   { name: "Users", description: "Staff account management (HOST only)" },
   { name: "Customers", description: "Customer records (HOST/AGENT)" },
@@ -60,6 +60,5 @@ export const tags = [
   { name: "Inventory", description: "Stock management" },
   { name: "Dashboard", description: "Analytics & reporting" },
   { name: "Subscriptions", description: "HOST-facing platform subscription" },
-  { name: "Admin", description: "GROOMA_ADMIN platform controls" },
   { name: "Internal", description: "Cron / service-to-service endpoints" },
 ];

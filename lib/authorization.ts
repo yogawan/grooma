@@ -57,13 +57,6 @@ export function requireBranchAccess(user: SessionUser, branchId: string): void {
   }
 }
 
-// §6.4: Only GROOMA_ADMIN role can access /api/v1/admin/* endpoints
-export function requireAdmin(user: SessionUser): void {
-  if (user.role !== "GROOMA_ADMIN") {
-    throw Errors.forbidden("Only administrators can access this resource.");
-  }
-}
-
 // Statuses that revoke access (§23.4 names PAST_DUE and EXPIRED; CANCELLED
 // belongs with them — it is likewise not a paying state).
 const BLOCKING_SUBSCRIPTION_STATUSES = new Set([
@@ -85,7 +78,9 @@ export function assertSubscriptionAllowsAccess(
   subscriptionStatus: string | null,
 ): void {
   // §23.4: AGENT is never blocked — a lapsed HOST subscription must not stop
-  // a branch from trading. GROOMA_ADMIN has no subscription of its own.
+  // a branch from trading. Written as `!== "HOST"` rather than `=== "AGENT"`
+  // so a role added later is non-blocking by default; only the subscribing
+  // role is ever gated on payment.
   if (user.role !== "HOST") {
     return;
   }

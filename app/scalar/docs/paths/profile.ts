@@ -21,8 +21,7 @@ export const profilePaths = {
     get: {
       tags: ["Profile"],
       operationId: "getOwnProfile",
-      summary:
-        "Get the current user's own profile (HOST, AGENT, or GROOMA_ADMIN)",
+      summary: "Get the current user's own profile (HOST or AGENT)",
       responses: {
         "200": { description: "Own profile", content: profileResponseContent },
         "401": { description: "Not authenticated" },

@@ -2,11 +2,12 @@
 //
 // Guard-rail for H-2. The behavioural half of this fix lives in
 // lib/authorization.test.ts ("dashboard access policy"), which proves
-// requireRole rejects GROOMA_ADMIN. That alone would not notice if someone
-// deleted the requireRole call from a route, which is exactly how the gap
-// existed in the first place — all six routes ran on requireAuth only, and
-// dashboardService then resolved its branch filter to "no filter" for
-// GROOMA_ADMIN and returned business-wide figures (PRD §3.1/§3.2).
+// requireRole rejects a role outside the allowed list. That alone would not
+// notice if someone deleted the requireRole call from a route, which is
+// exactly how the gap existed in the first place — all six routes ran on
+// requireAuth only, and dashboardService then resolved its branch filter to
+// "no filter" for a branch-less platform role and returned business-wide
+// figures (PRD §3.1/§3.2).
 //
 // Reading source text is a blunt instrument, but it is the only check that
 // actually fails when the gate disappears, short of booting the route with a

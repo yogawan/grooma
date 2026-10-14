@@ -10,8 +10,9 @@ import {
 import { getOwnProfile, updateOwnProfile } from "@/services/userService";
 import { updateProfileSchema } from "@/validations/userSchema";
 
-// No requireRole gate: HOST, AGENT, and GROOMA_ADMIN all manage their own
-// profile (§3.2 matrix — "own profile only" applies equally to all three).
+// No requireRole gate: both roles this service serves manage their own
+// profile (§3.2 matrix — "own profile only" applies equally to HOST and
+// AGENT), and no session can hold any other role (§3.6).
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request, { subscriptionExempt: true });
   const profile = await getOwnProfile(user);

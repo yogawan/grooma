@@ -419,19 +419,9 @@ export const Subscription = {
   properties: {
     _id: { type: "string" },
     host: {
-      oneOf: [
-        { type: "string" },
-        {
-          type: "object",
-          description:
-            "Populated with { _id, username, name, email } on GET /admin/subscriptions.",
-          properties: {
-            _id: { type: "string" },
-            username: { type: "string" },
-            name: { type: "string" },
-          },
-        },
-      ],
+      type: "string",
+      description:
+        "Always the HOST's id. The populated-object form only ever came back from the platform-wide admin listing, which now lives in the admin backend.",
     },
     plan: {
       ...SubscriptionPlan,

@@ -4,7 +4,6 @@ import { notFound } from "next/navigation";
 import type { NextRequest } from "next/server";
 import { info, security, servers, tags } from "./_config";
 import { schemas, securitySchemes } from "./_schemas";
-import { adminPaths } from "./paths/admin";
 import { authPaths } from "./paths/auth";
 import { branchPaths } from "./paths/branches";
 import { customerPaths } from "./paths/customers";
@@ -41,7 +40,6 @@ const specHandler = ApiReference({
       ...inventoryPaths,
       ...dashboardPaths,
       ...subscriptionPaths,
-      ...adminPaths,
       ...internalPaths,
     },
   },

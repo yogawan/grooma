@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import {
   createSession,
   hashPassword,
+  isServiceRole,
   serializeSessionUser,
   setSessionCookie,
   toSessionUser,
@@ -69,6 +70,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   const passwordMatches = await verifyPassword(user.password, password);
   if (!passwordMatches) {
+    throw Errors.invalidCredentials();
+  }
+
+  // This service only issues sessions to HOST and AGENT. The admin backend
+  // shares this database, so its GROOMA_ADMIN rows are reachable from here
+  // and would otherwise authenticate normally.
+  //
+  // Deliberately checked after the password verify, and reported as ordinary
+  // invalid credentials: rejecting earlier would skip the argon2 work and let
+  // an unauthenticated prober identify admin usernames by response time.
+  if (!isServiceRole(user.role)) {
     throw Errors.invalidCredentials();
   }
 

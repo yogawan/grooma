@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { isServiceRole, type SessionUser } from "@/lib/auth";
 import { requireBranchAccess, requireRole } from "@/lib/authorization";
 import { AppError } from "@/lib/errors";
 import { createMockBranchId, createMockSessionUser } from "./testUtils";
+
+// GROOMA_ADMIN moved to a separate admin backend that shares this database,
+// so SessionUser["role"] no longer has a name for it — but the `users`
+// collection still does, and that is the whole point of these cases. The cast
+// reproduces what this service would actually load from a row the admin
+// backend wrote; without it the scenario is simply unexpressible, which is
+// not the same as impossible.
+const FOREIGN_ROLE = "GROOMA_ADMIN" as unknown as SessionUser["role"];
 
 // These assertions originally matched the literal string "Access denied",
 // which the implementation has never produced — the whole suite failed to
@@ -51,9 +60,9 @@ describe("Authorization", () => {
       expectForbidden(() => requireRole(user, ["HOST"]));
     });
 
-    it("should throw forbidden error if GROOMA_ADMIN tries to access regular routes", () => {
+    it("should throw forbidden error for a role this service does not own", () => {
       const user = createMockSessionUser({
-        role: "GROOMA_ADMIN",
+        role: FOREIGN_ROLE,
         branch: null,
       });
       expectForbidden(() => requireRole(user, ["HOST", "AGENT"]));
@@ -100,9 +109,9 @@ describe("Authorization", () => {
       expect(() => requireBranchAccess(user, targetBranchId)).not.toThrow();
     });
 
-    it("should throw forbidden error for GROOMA_ADMIN on any branch", () => {
+    it("should throw forbidden error for a foreign role on any branch", () => {
       const user = createMockSessionUser({
-        role: "GROOMA_ADMIN",
+        role: FOREIGN_ROLE,
         branch: null,
       });
       expectForbidden(() => requireBranchAccess(user, createMockBranchId()));
@@ -111,23 +120,28 @@ describe("Authorization", () => {
 
   // Regression: H-2. The six dashboard routes used to run on requireAuth
   // alone. dashboardService derives its branch filter as
-  // `role === "HOST" ? query.branchId : user.branch || undefined`, so for
-  // GROOMA_ADMIN (branch null, role neither HOST nor AGENT) it collapsed to
+  // `role === "HOST" ? query.branchId : user.branch || undefined`, so for a
+  // branch-less role that is neither HOST nor AGENT it collapsed to
   // undefined — i.e. no filter — and returned business-wide revenue,
-  // transaction stats, agent performance and inventory. PRD §3.1/§3.2
-  // forbid that role any operational data.
+  // transaction stats, agent performance and inventory. PRD §3.1/§3.2 forbid
+  // a platform role any operational data.
+  //
+  // The role that originally triggered this (GROOMA_ADMIN) now lives in a
+  // separate backend, but the shape of the bug does not depend on which role
+  // it was — any session whose role falls outside the allowed list must be
+  // refused, so the case is still worth pinning.
   describe("dashboard access policy (H-2 regression)", () => {
     const DASHBOARD_ROLES: Parameters<typeof requireRole>[1] = [
       "HOST",
       "AGENT",
     ];
 
-    it("rejects GROOMA_ADMIN", () => {
-      const admin = createMockSessionUser({
-        role: "GROOMA_ADMIN",
+    it("rejects a role outside the dashboard's allowed list", () => {
+      const foreign = createMockSessionUser({
+        role: FOREIGN_ROLE,
         branch: null,
       });
-      expectForbidden(() => requireRole(admin, DASHBOARD_ROLES));
+      expectForbidden(() => requireRole(foreign, DASHBOARD_ROLES));
     });
 
     it("still admits HOST and AGENT", () => {
@@ -138,6 +152,30 @@ describe("Authorization", () => {
       });
       expect(() => requireRole(host, DASHBOARD_ROLES)).not.toThrow();
       expect(() => requireRole(agent, DASHBOARD_ROLES)).not.toThrow();
+    });
+  });
+
+  // The role gates above only run once a session exists. isServiceRole is the
+  // gate that decides whether a session is issued at all — it is what keeps an
+  // admin row in the shared database from authenticating against this service
+  // (lib/auth.ts, app/api/v1/auth/login/route.ts).
+  describe("isServiceRole", () => {
+    it("accepts the two roles this service owns", () => {
+      expect(isServiceRole("HOST")).toBe(true);
+      expect(isServiceRole("AGENT")).toBe(true);
+    });
+
+    it("rejects the admin backend's role", () => {
+      expect(isServiceRole("GROOMA_ADMIN")).toBe(false);
+    });
+
+    it("rejects an unknown role rather than assuming it is harmless", () => {
+      expect(isServiceRole("SUPPORT")).toBe(false);
+      expect(isServiceRole("")).toBe(false);
+    });
+
+    it("is case-sensitive, so a lowercased role is not silently accepted", () => {
+      expect(isServiceRole("host")).toBe(false);
     });
   });
 });

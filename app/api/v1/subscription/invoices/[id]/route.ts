@@ -9,7 +9,7 @@ export const GET = withErrorHandling<{ id: string }>(
   async (request: NextRequest, { params }) => {
     const user = await requireAuth(request, { subscriptionExempt: true });
     // §3.2: subscription and invoices are the HOST's own billing data;
-    // AGENT and GROOMA_ADMIN have no entry here.
+    // AGENT has no entry here; no other role can hold a session (§3.6).
     requireRole(user, ["HOST"]);
     const { id } = await params;
 

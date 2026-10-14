@@ -27,7 +27,7 @@ export const userPaths = {
       tags: ["Users"],
       operationId: "listUsers",
       summary:
-        "List staff accounts (HOST only; GROOMA_ADMIN accounts never appear)",
+        "List staff accounts (HOST only; platform-internal accounts never appear)",
       responses: {
         "200": {
           description: "List of users",
@@ -58,8 +58,7 @@ export const userPaths = {
     post: {
       tags: ["Users"],
       operationId: "createUser",
-      summary:
-        "Create a staff account (HOST only; role is HOST or AGENT, never GROOMA_ADMIN)",
+      summary: "Create a staff account (HOST only; role is HOST or AGENT)",
       requestBody: {
         required: true,
         content: {

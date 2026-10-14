@@ -73,10 +73,17 @@ describe("Errors", () => {
       expect(error.status).toBe(409);
     });
 
+    // PRD §14 maps 422 to "Business validation failure" and reserves 400 for
+    // "Invalid input"; the error-code vocabulary is not specified there, and
+    // BUSINESS_RULE_VIOLATION has been the emitted code since lib/errors.ts
+    // was first written (ca5c3bb). This assertion previously expected
+    // BUSINESS_RULE/400, which never matched any implementation — it stayed
+    // invisible only because the suite's failure was accepted as baseline.
     it("should create businessRule error", () => {
       const error = Errors.businessRule("Cannot cancel completed transaction");
-      expect(error.code).toBe("BUSINESS_RULE");
-      expect(error.status).toBe(400);
+      expect(error.code).toBe("BUSINESS_RULE_VIOLATION");
+      expect(error.status).toBe(422);
+      expect(error.message).toBe("Cannot cancel completed transaction");
     });
 
     it("should create rateLimited error", () => {

@@ -124,6 +124,28 @@ export async function revokeSession(token: string | undefined): Promise<void> {
   await SessionModel.deleteOne({ tokenHash: hashToken(token) });
 }
 
+// §15: a password change must not leave an attacker's stolen session alive —
+// that is the whole point of changing it. Every other session for the
+// account is dropped; the caller's own session survives so a routine
+// rotation doesn't log the user out of the device they are holding.
+//
+// Passing no `keepToken` revokes every session for the user, which is what
+// an admin-initiated reset would want.
+export async function revokeOtherSessions(
+  userId: Types.ObjectId | string,
+  keepToken?: string,
+): Promise<number> {
+  await connectDB();
+
+  const filter: Record<string, unknown> = { user: userId };
+  if (keepToken) {
+    filter.tokenHash = { $ne: hashToken(keepToken) };
+  }
+
+  const result = await SessionModel.deleteMany(filter);
+  return result.deletedCount ?? 0;
+}
+
 export function setSessionCookie(
   response: NextResponse,
   token: string,

@@ -43,6 +43,13 @@ export const Errors = {
   businessRule: (message: string) =>
     new AppError("BUSINESS_RULE_VIOLATION", message, 422),
 
+  // §23.4: a HOST whose subscription lapsed is refused everything except
+  // /subscription* and /profile. 402 is called for explicitly there, in
+  // addition to the §14 status table.
+  paymentRequired: (
+    message = "Your subscription is not active. Settle the outstanding invoice to restore access.",
+  ) => new AppError("PAYMENT_REQUIRED", message, 402),
+
   rateLimited: (message = "Too many requests. Please try again later.") =>
     new AppError("RATE_LIMITED", message, 429),
 

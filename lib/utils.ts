@@ -42,9 +42,37 @@ export function escapeRegex(value: string): string {
 // Works whether a populated ref field is a raw ObjectId or a populated
 // sub-document (Mongoose returns either depending on whether .populate()
 // was called on that path).
+//
+// Absent or unidentifiable input yields "" rather than a stringified
+// "null"/"undefined"/"[object Object]". That distinction is load-bearing:
+// every caller feeds the result straight into requireBranchAccess, where a
+// fabricated non-empty string is a real comparison target, while "" can
+// never equal a branch id — so a missing ref fails closed instead of
+// silently becoming a branch identifier that merely happens not to match.
 export function extractRefId(ref: unknown): string {
-  if (ref && typeof ref === "object" && "_id" in ref) {
-    return String((ref as { _id: unknown })._id);
+  if (ref === null || ref === undefined) {
+    return "";
   }
-  return String(ref);
+
+  if (typeof ref !== "object") {
+    return String(ref);
+  }
+
+  const candidate = ref as { _id?: unknown; toString: () => string };
+
+  // Populated sub-document: its own _id may itself be an ObjectId or any
+  // object with a meaningful toString, so defer to String() rather than
+  // recursing (a bare { toString } holder has no _id of its own).
+  if (candidate._id !== undefined && candidate._id !== null) {
+    return String(candidate._id);
+  }
+
+  // An unpopulated ref is a BSON ObjectId: no _id of its own, but it
+  // overrides toString to produce its hex form. A plain object inherits
+  // Object.prototype.toString and carries no id at all.
+  if (candidate.toString !== Object.prototype.toString) {
+    return String(ref);
+  }
+
+  return "";
 }

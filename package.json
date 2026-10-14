@@ -9,7 +9,9 @@
     "lint": "biome check",
     "format": "biome format --write",
     "test": "vitest",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "seed:admin": "bun scripts/seedAdmin.ts",
+    "seed:host": "bun scripts/seedHost.ts"
   },
   "dependencies": {
     "@scalar/nextjs-api-reference": "^0.12.10",

@@ -131,7 +131,7 @@ export function setSessionCookie(
 ): void {
   response.cookies.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.APPLICATION_ENVIRONMENT === "production",
     sameSite: "lax",
     path: "/",
     expires: expiresAt,

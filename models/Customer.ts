@@ -1,5 +1,5 @@
 // @/models/Customer.ts
-import { Schema, model, models } from "mongoose";
+import { model, models, Schema } from "mongoose";
 
 const CustomerSchema = new Schema(
   {

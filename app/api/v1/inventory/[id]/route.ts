@@ -11,8 +11,8 @@ import {
   getItemById,
   softDeleteItem,
   updateItem,
-} from "@/services/inventory.service";
-import { updateInventorySchema } from "@/validations/inventory.schema";
+} from "@/services/inventoryService";
+import { updateInventorySchema } from "@/validations/inventorySchema";
 
 export const GET = withErrorHandling<{ id: string }>(
   async (request: NextRequest, { params }) => {

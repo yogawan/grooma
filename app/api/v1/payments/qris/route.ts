@@ -7,8 +7,8 @@ import {
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { createQrisPayment } from "@/services/payment.service";
-import { createQrisPaymentSchema } from "@/validations/payment.schema";
+import { createQrisPayment } from "@/services/paymentService";
+import { createQrisPaymentSchema } from "@/validations/paymentSchema";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request);

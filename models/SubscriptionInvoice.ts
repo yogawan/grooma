@@ -1,6 +1,7 @@
 // @/models/SubscriptionInvoice.ts
-import { Schema, model, models } from "mongoose";
+
 import type { Document } from "mongoose";
+import { model, models, Schema } from "mongoose";
 
 export interface ISubscriptionInvoice extends Document {
   subscription: Schema.Types.ObjectId;

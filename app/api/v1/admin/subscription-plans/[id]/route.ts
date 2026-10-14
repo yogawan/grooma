@@ -1,17 +1,17 @@
 // @/app/api/v1/admin/subscription-plans/[id]/route.ts
 import type { NextRequest } from "next/server";
-import { requireAuth, requireAdmin } from "@/lib/authorization";
+import { requireAdmin, requireAuth } from "@/lib/authorization";
 import {
+  parseJsonBody,
   successResponse,
   withErrorHandling,
   zodErrorToAppError,
-  parseJsonBody,
 } from "@/lib/errors";
 import {
   getSubscriptionPlan,
   updateSubscriptionPlan,
-} from "@/services/subscription.service";
-import { updateSubscriptionPlanSchema } from "@/validations/subscription.schema";
+} from "@/services/subscriptionService";
+import { updateSubscriptionPlanSchema } from "@/validations/subscriptionSchema";
 
 export const GET = withErrorHandling<{ id: string }>(
   async (request: NextRequest, { params }) => {

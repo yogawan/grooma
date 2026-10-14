@@ -7,11 +7,11 @@ import {
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { createItem, listItems } from "@/services/inventory.service";
+import { createItem, listItems } from "@/services/inventoryService";
 import {
   createInventorySchema,
   listInventoryQuerySchema,
-} from "@/validations/inventory.schema";
+} from "@/validations/inventorySchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request);

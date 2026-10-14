@@ -2,7 +2,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/authorization";
 import { successResponse, withErrorHandling } from "@/lib/errors";
-import { getChangeRequestById } from "@/services/approval.service";
+import { getChangeRequestById } from "@/services/approvalService";
 
 // No requireRole gate: access is data-dependent (HOST or the requester
 // themselves), enforced inside getChangeRequestById (§7.9).

@@ -2,8 +2,8 @@
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/authorization";
 import { successResponse, withErrorHandling } from "@/lib/errors";
-import { getSubscriptionByHostId } from "@/services/subscription.service";
-import { getInvoiceById } from "@/services/billing.service";
+import { getInvoiceById } from "@/services/billingService";
+import { getSubscriptionByHostId } from "@/services/subscriptionService";
 
 export const GET = withErrorHandling<{ id: string }>(
   async (request: NextRequest, { params }) => {

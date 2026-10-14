@@ -7,8 +7,8 @@ import {
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { getOwnProfile, updateOwnProfile } from "@/services/user.service";
-import { updateProfileSchema } from "@/validations/user.schema";
+import { getOwnProfile, updateOwnProfile } from "@/services/userService";
+import { updateProfileSchema } from "@/validations/userSchema";
 
 // No requireRole gate: HOST, AGENT, and GROOMA_ADMIN all manage their own
 // profile (§3.2 matrix — "own profile only" applies equally to all three).

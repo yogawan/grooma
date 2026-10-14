@@ -7,8 +7,8 @@ import {
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { setUserStatus } from "@/services/user.service";
-import { setUserStatusSchema } from "@/validations/user.schema";
+import { setUserStatus } from "@/services/userService";
+import { setUserStatusSchema } from "@/validations/userSchema";
 
 export const PATCH = withErrorHandling<{ id: string }>(
   async (request: NextRequest, { params }) => {

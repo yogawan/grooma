@@ -7,8 +7,8 @@ import {
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { createBranch, listBranches } from "@/services/branch.service";
-import { createBranchSchema } from "@/validations/branch.schema";
+import { createBranch, listBranches } from "@/services/branchService";
+import { createBranchSchema } from "@/validations/branchSchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request);

@@ -1,13 +1,13 @@
 // @/app/api/v1/admin/subscriptions/route.ts
 import type { NextRequest } from "next/server";
-import { requireAuth, requireAdmin } from "@/lib/authorization";
+import { requireAdmin, requireAuth } from "@/lib/authorization";
 import {
   successResponse,
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { listSubscriptions } from "@/services/subscription.service";
-import { listSubscriptionsQuerySchema } from "@/validations/subscription.schema";
+import { listSubscriptions } from "@/services/subscriptionService";
+import { listSubscriptionsQuerySchema } from "@/validations/subscriptionSchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request);

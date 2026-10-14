@@ -10,9 +10,9 @@ import {
   zodErrorToAppError,
 } from "@/lib/errors";
 import { connectDB } from "@/lib/mongodb";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { checkRateLimit } from "@/lib/rateLimit";
 import UserModel from "@/models/User";
-import { changePasswordSchema } from "@/validations/auth.schema";
+import { changePasswordSchema } from "@/validations/authSchema";
 
 const CHANGE_PASSWORD_RATE_LIMIT = 5;
 const CHANGE_PASSWORD_RATE_WINDOW_MS = 15 * 60 * 1000;

@@ -6,8 +6,8 @@ import {
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { getTransactionStats } from "@/services/dashboard.service";
-import { transactionStatsQuerySchema } from "@/validations/dashboard.schema";
+import { getTransactionStats } from "@/services/dashboardService";
+import { transactionStatsQuerySchema } from "@/validations/dashboardSchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request);

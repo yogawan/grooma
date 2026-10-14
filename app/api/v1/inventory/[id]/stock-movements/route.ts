@@ -7,11 +7,11 @@ import {
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { adjustStock, listStockMovements } from "@/services/inventory.service";
+import { adjustStock, listStockMovements } from "@/services/inventoryService";
 import {
   listStockMovementsQuerySchema,
   stockMovementSchema,
-} from "@/validations/inventory.schema";
+} from "@/validations/inventorySchema";
 
 export const GET = withErrorHandling<{ id: string }>(
   async (request: NextRequest, { params }) => {

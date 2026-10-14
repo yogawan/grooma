@@ -1,6 +1,7 @@
 // @/models/SubscriptionPlan.ts
-import { Schema, model, models } from "mongoose";
+
 import type { Document } from "mongoose";
+import { model, models, Schema } from "mongoose";
 
 export interface ISubscriptionPlan extends Document {
   code: string;

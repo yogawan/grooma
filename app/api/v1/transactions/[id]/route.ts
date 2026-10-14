@@ -2,7 +2,7 @@
 import type { NextRequest } from "next/server";
 import { requireAuth, requireRole } from "@/lib/authorization";
 import { successResponse, withErrorHandling } from "@/lib/errors";
-import { getTransactionById } from "@/services/transaction.service";
+import { getTransactionById } from "@/services/transactionService";
 
 export const GET = withErrorHandling<{ id: string }>(
   async (request: NextRequest, { params }) => {

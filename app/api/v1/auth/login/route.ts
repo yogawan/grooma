@@ -16,10 +16,10 @@ import {
   zodErrorToAppError,
 } from "@/lib/errors";
 import { connectDB } from "@/lib/mongodb";
-import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import BranchModel from "@/models/Branch";
 import UserModel from "@/models/User";
-import { loginSchema } from "@/validations/auth.schema";
+import { loginSchema } from "@/validations/authSchema";
 
 const LOGIN_RATE_LIMIT = 10;
 const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;

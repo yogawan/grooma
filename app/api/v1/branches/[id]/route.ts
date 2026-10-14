@@ -7,8 +7,8 @@ import {
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { getBranchById, updateBranch } from "@/services/branch.service";
-import { updateBranchSchema } from "@/validations/branch.schema";
+import { getBranchById, updateBranch } from "@/services/branchService";
+import { updateBranchSchema } from "@/validations/branchSchema";
 
 export const GET = withErrorHandling<{ id: string }>(
   async (request: NextRequest, { params }) => {

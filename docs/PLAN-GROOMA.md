@@ -155,7 +155,7 @@ Simpan di `.env.local` (sudah di-gitignore lewat pola `.env*`), buat juga `.env.
 - [x] `models/Payment.ts` baru — `providerOrderId` unique, `status` enum termasuk `EXPIRED` (sesuai keputusan §1), simpan di collection terpisah dari Transaction (§5.9)
 
 **Lib:**
-- [x] `lib/midtrans.ts` — wrapper client Midtrans server-side; credential hanya dari env, tidak pernah dikirim ke frontend (§9.1). Ditambah `types/midtrans-client.d.ts` (package tidak ship tipe TS sama sekali) dan timeout 10s manual (axios bawaan SDK tidak punya timeout — hang tanpa batas dikonfirmasi langsung ke sandbox, lihat catatan testing di bawah)
+- [x] `lib/midtrans.ts` — wrapper client Midtrans server-side; credential hanya dari env, tidak pernah dikirim ke frontend (§9.1). Ditambah `types/midtransClient.d.ts` (package tidak ship tipe TS sama sekali) dan timeout 10s manual (axios bawaan SDK tidak punya timeout — hang tanpa batas dikonfirmasi langsung ke sandbox, lihat catatan testing di bawah)
 
 **Services:**
 - [x] `services/transaction.service.ts` — implementasi alur §8.2: ambil customer/service/user/branch dari DB (bukan dari request body), hitung `subtotal`/`discountAmount`/`total`/`ownerRevenue`/`employeeRevenue` di backend, simpan `serviceSnapshot`, generate `transactionCode` unik (format `GRM-YYYYMMDD-XXXXXX`, tanggal mengikuti timezone branch, §8.4)
@@ -289,7 +289,7 @@ Simpan di `.env.local` (sudah di-gitignore lewat pola `.env*`), buat juga `.env.
   - docs/SECURITY-AUDIT.md: Comprehensive review of all 15 security requirements
   - Verdict: ACCEPTABLE for MVP launch (CSRF deferred as post-MVP, low-risk)
 - [x] Payment reconciliation script (cocokkan status lokal vs status asli di Midtrans)
-  - scripts/reconcile-payments.ts: Compare local vs Midtrans authoritative status
+  - scripts/reconcilePayments.ts: Compare local vs Midtrans authoritative status
   - Dry-run mode (default) reports discrepancies; --fix flag applies corrections
 - [x] Performance pass — review index, cek query N+1, pastikan semua list endpoint pakai pagination
   - docs/PERFORMANCE-AUDIT.md: No N+1 patterns found, all pagination enforced (1-100, default 20)

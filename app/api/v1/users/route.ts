@@ -7,8 +7,8 @@ import {
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { createUser, listUsers } from "@/services/user.service";
-import { createUserSchema } from "@/validations/user.schema";
+import { createUser, listUsers } from "@/services/userService";
+import { createUserSchema } from "@/validations/userSchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request);

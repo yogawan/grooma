@@ -10,11 +10,11 @@ import {
 import {
   createTransaction,
   listTransactions,
-} from "@/services/transaction.service";
+} from "@/services/transactionService";
 import {
   createTransactionSchema,
   listTransactionsQuerySchema,
-} from "@/validations/transaction.schema";
+} from "@/validations/transactionSchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request);

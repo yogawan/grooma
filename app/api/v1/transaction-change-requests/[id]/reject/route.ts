@@ -7,8 +7,8 @@ import {
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { rejectChangeRequest } from "@/services/approval.service";
-import { rejectChangeRequestSchema } from "@/validations/approval.schema";
+import { rejectChangeRequest } from "@/services/approvalService";
+import { rejectChangeRequestSchema } from "@/validations/approvalSchema";
 
 export const POST = withErrorHandling<{ id: string }>(
   async (request: NextRequest, { params }) => {

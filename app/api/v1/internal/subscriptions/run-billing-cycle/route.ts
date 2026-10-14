@@ -6,7 +6,7 @@ import {
   expireOverdueInvoices,
   expireOverdueSubscriptions,
   generateSubscriptionInvoice,
-} from "@/services/billing.service";
+} from "@/services/billingService";
 
 const INTERNAL_CRON_SECRET = process.env.INTERNAL_CRON_SECRET;
 

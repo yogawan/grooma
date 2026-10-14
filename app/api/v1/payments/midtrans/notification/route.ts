@@ -5,7 +5,7 @@ import {
   successResponse,
   withErrorHandling,
 } from "@/lib/errors";
-import { routeMidtransNotification } from "@/services/payment.service";
+import { routeMidtransNotification } from "@/services/paymentService";
 
 // Public gateway webhook (§7.8, §9.5) — intentionally no requireAuth/requireRole.
 // Trust comes entirely from signature verification + re-fetching the

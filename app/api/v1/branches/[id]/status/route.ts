@@ -7,8 +7,8 @@ import {
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { setBranchStatus } from "@/services/branch.service";
-import { setBranchStatusSchema } from "@/validations/branch.schema";
+import { setBranchStatus } from "@/services/branchService";
+import { setBranchStatusSchema } from "@/validations/branchSchema";
 
 export const PATCH = withErrorHandling<{ id: string }>(
   async (request: NextRequest, { params }) => {

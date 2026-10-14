@@ -6,8 +6,8 @@ import {
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { listPendingChangeRequests } from "@/services/approval.service";
-import { listChangeRequestsQuerySchema } from "@/validations/approval.schema";
+import { listPendingChangeRequests } from "@/services/approvalService";
+import { listChangeRequestsQuerySchema } from "@/validations/approvalSchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request);

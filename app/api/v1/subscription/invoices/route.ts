@@ -6,9 +6,9 @@ import {
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { getSubscriptionByHostId } from "@/services/subscription.service";
-import { listSubscriptionInvoicesQuerySchema } from "@/validations/subscription.schema";
-import { listInvoicesBySubscription } from "@/services/billing.service";
+import { listInvoicesBySubscription } from "@/services/billingService";
+import { getSubscriptionByHostId } from "@/services/subscriptionService";
+import { listSubscriptionInvoicesQuerySchema } from "@/validations/subscriptionSchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request);

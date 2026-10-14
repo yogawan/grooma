@@ -7,8 +7,8 @@ import {
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { getCustomerById, updateCustomer } from "@/services/customer.service";
-import { updateCustomerSchema } from "@/validations/customer.schema";
+import { getCustomerById, updateCustomer } from "@/services/customerService";
+import { updateCustomerSchema } from "@/validations/customerSchema";
 
 export const GET = withErrorHandling<{ id: string }>(
   async (request: NextRequest, { params }) => {

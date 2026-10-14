@@ -6,8 +6,8 @@ import {
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { getInventorySummary } from "@/services/dashboard.service";
-import { inventoryQuerySchema } from "@/validations/dashboard.schema";
+import { getInventorySummary } from "@/services/dashboardService";
+import { inventoryQuerySchema } from "@/validations/dashboardSchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request);

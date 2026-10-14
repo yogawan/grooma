@@ -7,6 +7,7 @@ import BranchModel from "@/models/Branch";
 import UserModel from "@/models/User";
 import type {
   CreateUserInput,
+  SetPaymentIntegrationModeInput,
   SetUserStatusInput,
   UpdateProfileInput,
   UpdateUserInput,
@@ -32,6 +33,7 @@ interface SerializableUser {
   address?: string | null;
   photoUrl?: string | null;
   status: string;
+  paymentIntegrationMode?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -56,6 +58,11 @@ function serializeUser(user: unknown) {
     address: u.address ?? null,
     photoUrl: u.photoUrl ?? null,
     status: u.status,
+    // §9.6: read-only here and meaningless for AGENT/GROOMA_ADMIN, so it is
+    // surfaced as null for them rather than leaking a default that doesn't
+    // govern anything. Writing it is GROOMA_ADMIN-only (setPaymentIntegrationMode).
+    paymentIntegrationMode:
+      u.role === "HOST" ? (u.paymentIntegrationMode ?? "MANAGED") : null,
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
   };
@@ -154,6 +161,36 @@ export async function setUserStatus(id: string, input: SetUserStatusInput) {
   await user.populate("branch", "name");
 
   return serializeUser(user);
+}
+
+// §9.6: GROOMA_ADMIN-only (enforced at the route). Targets a HOST
+// specifically — the mode governs nothing on an AGENT or another admin, so
+// pointing this at one is a client error, not a silent no-op. Unlike the
+// rest of this module it does not use EXCLUDE_ADMIN_FILTER, because the
+// `role === "HOST"` requirement below is already stricter than excluding
+// GROOMA_ADMIN.
+export async function setPaymentIntegrationMode(
+  hostId: string,
+  input: SetPaymentIntegrationModeInput,
+) {
+  await connectDB();
+  const host = await UserModel.findById(hostId);
+
+  if (!host) {
+    throw Errors.notFound("User not found.");
+  }
+
+  if (host.role !== "HOST") {
+    throw Errors.businessRule(
+      "Payment integration mode applies to HOST accounts only.",
+    );
+  }
+
+  host.paymentIntegrationMode = input.paymentIntegrationMode;
+  await host.save();
+  await host.populate("branch", "name");
+
+  return serializeUser(host);
 }
 
 export async function getOwnProfile(sessionUser: SessionUser) {

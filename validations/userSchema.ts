@@ -38,6 +38,19 @@ export const setUserStatusSchema = z
   .strict();
 export type SetUserStatusInput = z.infer<typeof setUserStatusSchema>;
 
+// §9.6/§5.1: GROOMA_ADMIN-only. Deliberately its own schema rather than a
+// field on createUserSchema/updateUserSchema/updateProfileSchema — those are
+// HOST- and self-service-facing, and .strict() there now rejects this key
+// outright, which is the intended guard.
+export const setPaymentIntegrationModeSchema = z
+  .object({
+    paymentIntegrationMode: z.enum(["MANAGED", "SELF_RECORDED"]),
+  })
+  .strict();
+export type SetPaymentIntegrationModeInput = z.infer<
+  typeof setPaymentIntegrationModeSchema
+>;
+
 // §13: profile updates can never touch role/branch/username/status — those
 // keys are simply absent from this schema, and .strict() rejects them
 // outright instead of silently dropping them.

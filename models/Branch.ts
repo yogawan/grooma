@@ -10,6 +10,19 @@ const BranchSchema = new Schema(
       trim: true,
     },
 
+    // §9.6: the owning HOST account, whose `paymentIntegrationMode` decides
+    // whether this branch's QRIS transactions go through Midtrans or are
+    // merely recorded. Nullable (not required) because branches created
+    // before this field existed have no owner to point at — those fall back
+    // to MANAGED, see resolvePaymentIntegrationMode(). Note this field is
+    // deliberately NOT an access-control boundary: §3.3 still grants every
+    // HOST access to every branch.
+    host: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
     name: {
       type: String,
       required: true,

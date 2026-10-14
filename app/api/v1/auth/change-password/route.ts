@@ -1,6 +1,11 @@
 // @/app/api/v1/auth/change-password/route.ts
 import type { NextRequest } from "next/server";
-import { hashPassword, verifyPassword } from "@/lib/auth";
+import {
+  hashPassword,
+  revokeOtherSessions,
+  SESSION_COOKIE_NAME,
+  verifyPassword,
+} from "@/lib/auth";
 import { requireAuth } from "@/lib/authorization";
 import {
   Errors,
@@ -18,7 +23,7 @@ const CHANGE_PASSWORD_RATE_LIMIT = 5;
 const CHANGE_PASSWORD_RATE_WINDOW_MS = 15 * 60 * 1000;
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  const sessionUser = await requireAuth(request);
+  const sessionUser = await requireAuth(request, { subscriptionExempt: true });
 
   const rateLimit = await checkRateLimit(
     `change-password:${sessionUser.id}`,
@@ -50,5 +55,17 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   user.password = await hashPassword(newPassword);
   await user.save();
 
-  return successResponse({ message: "Password updated." });
+  // §M-7: revoke every *other* session for this account. Done after the
+  // save so a failed password write never logs anyone out, and the caller's
+  // own session is preserved so the device in hand stays signed in.
+  const currentToken = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  const revokedSessions = await revokeOtherSessions(
+    sessionUser.id,
+    currentToken,
+  );
+
+  return successResponse({
+    message: "Password updated.",
+    revokedSessions,
+  });
 });

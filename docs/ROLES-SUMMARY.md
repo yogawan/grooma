@@ -1,5 +1,7 @@
 # Ringkasan Role — Grooma
 
+> **Konteks penting:** Grooma di-deploy **satu instance per HOST** — satu deployment, satu database, satu bisnis barbershop (PRD §3.5). Jadi di dalam satu deployment cuma ada satu HOST, dan "HOST bisa akses semua cabang" itu memang benar, bukan celah. Bisnis baru = deployment + database baru (lihat `PROVISIONING-HOST.md`), bukan akun HOST baru.
+
 ## HOST
 *Pengelola bisnis, akses lintas cabang.*
 - Kelola cabang & akun pegawai (users) — AGENT tidak punya akses ini sama sekali
@@ -8,8 +10,7 @@
 - Approve/reject pengajuan perubahan transaksi (tidak boleh approve pengajuannya sendiri)
 - Lihat & bayar subscription + invoice miliknya sendiri (QRIS)
 - **Tidak bisa** membuat transaksi baru
-- Transaksi QRIS cabangnya diproses lewat Midtrans Grooma (mode `MANAGED`, default) atau cukup dicatat karena HOST pakai QRIS sendiri (mode `SELF_RECORDED`) — mode ini ditentukan GROOMA_ADMIN, bukan HOST sendiri (PRD §9.6)
-- Cabang yang dibuat HOST otomatis tercatat `host`-nya ke akun itu — tapi ini **cuma** buat nentuin mode pembayaran, bukan pembatasan akses: HOST tetap bisa lihat & kelola cabang milik HOST lain (PRD §3.3)
+- Transaksi QRIS diproses lewat akun Midtrans milik HOST sendiri (mode `MANAGED`) atau cukup dicatat karena HOST pakai QRIS sendiri (mode `SELF_RECORDED`) — ditentukan env var `PAYMENT_INTEGRATION_MODE` saat provisioning, bukan lewat API (PRD §9.6)
 
 ## AGENT
 *Pegawai operasional, akses satu cabang (sesuai penugasan).*
@@ -26,7 +27,7 @@
 - Kelola konfigurasi `SubscriptionPlan` (harga, aktif/nonaktif)
 - Lihat semua `Subscription` & `Invoice` milik seluruh akun HOST
 - Override manual status subscription (mis. setelah verifikasi pembayaran manual)
-- Menentukan `paymentIntegrationMode` tiap akun HOST — `MANAGED` (QRIS diproses Midtrans Grooma) atau `SELF_RECORDED` (HOST pakai QRIS sendiri, Grooma cuma mencatat), lewat `PATCH /admin/hosts/{id}/payment-integration-mode` (PRD §9.6)
+- **Tidak** mengatur mode pembayaran — itu env var deployment, bukan data yang bisa diubah lewat API (PRD §9.6)
 - Akses lewat namespace API terpisah `/api/v1/admin/*`
 - **Tidak bisa** akses data operasional (customer/transaksi/inventaris), kecuali untuk audit billing
 - Akun tidak bisa dibuat lewat endpoint publik — provisioning internal saja
@@ -120,7 +121,7 @@
 | GET | `/api/v1/payments/{id}` | HOST, AGENT |
 | POST | `/api/v1/payments/midtrans/notification` | Public (webhook, verifikasi signature Midtrans) |
 
-> `/payments/qris` menolak transaksi milik HOST bermode `SELF_RECORDED` (PRD §9.6) — transaksi tersebut sudah `PAID` sejak dibuat dan tidak punya order Midtrans. Mode diresolve dari `Transaction.branch` → `Branch.host` → `User.paymentIntegrationMode`; cabang tanpa `host` diperlakukan `MANAGED`.
+> Pada deployment bermode `SELF_RECORDED`, `/payments/qris` menolak permintaan (PRD §9.6) — transaksi QRIS di situ sudah `PAID` sejak dibuat dan tidak punya order Midtrans. Webhook Midtrans juga tidak pernah menerima notifikasi.
 
 ### Dashboard
 | Method | Endpoint | Roles |
@@ -149,7 +150,6 @@
 | GET | `/api/v1/admin/subscriptions` | GROOMA_ADMIN |
 | GET | `/api/v1/admin/subscriptions/{id}` | GROOMA_ADMIN |
 | PATCH | `/api/v1/admin/subscriptions/{id}` | GROOMA_ADMIN |
-| PATCH | `/api/v1/admin/hosts/{id}/payment-integration-mode` | GROOMA_ADMIN |
 
 ### Internal
 | Method | Endpoint | Roles |

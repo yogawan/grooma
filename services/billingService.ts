@@ -6,11 +6,16 @@ import {
   isSubscriptionOrderId,
 } from "@/lib/billing";
 import { Errors } from "@/lib/errors";
+import { logger } from "@/lib/logger";
 import { createQrisCharge, getTransactionStatus } from "@/lib/midtrans";
 import { connectDB } from "@/lib/mongodb";
 import SubscriptionModel from "@/models/Subscription";
 import type { ISubscriptionInvoice } from "@/models/SubscriptionInvoice";
 import SubscriptionInvoiceModel from "@/models/SubscriptionInvoice";
+import SubscriptionPlanModel from "@/models/SubscriptionPlan";
+// Type-only import: no runtime cycle with paymentService, which dynamically
+// imports this module.
+import type { NotificationResult } from "@/services/paymentService";
 
 interface PaginationInfo {
   page: number;
@@ -24,13 +29,18 @@ export async function generateSubscriptionInvoice(
 ): Promise<ISubscriptionInvoice> {
   await connectDB();
 
-  const subscription =
-    await SubscriptionModel.findById(subscriptionId).populate("plan");
+  const subscription = await SubscriptionModel.findById(subscriptionId);
   if (!subscription) {
     throw Errors.notFound("Subscription");
   }
 
-  const plan = subscription.populated("plan");
+  // Loaded by id rather than .populate("plan") + .populated("plan"): the
+  // latter returns the populated _id, NOT the document. Reading
+  // plan.price/plan.billingCycle off an ObjectId yielded undefined, which
+  // made `amount` fail its required-field validation and silently pushed
+  // calculateNextBillingPeriod() down its ANNUAL branch — a monthly plan
+  // would have been invoiced for a year-long period.
+  const plan = await SubscriptionPlanModel.findById(subscription.plan);
   if (!plan) {
     throw Errors.notFound("Subscription Plan");
   }
@@ -135,9 +145,44 @@ export async function listInvoicesBySubscription(
   };
 }
 
+type InvoiceStatus = "PENDING" | "PAID" | "FAILED" | "EXPIRED" | "REFUNDED";
+
+// Midtrans's transaction_status vocabulary mapped to SubscriptionInvoice.status
+// (models/SubscriptionInvoice.ts). An unrecognized status is deliberately
+// absent rather than defaulting to PENDING — see below.
+const INVOICE_STATUS_MAP: Record<string, InvoiceStatus | undefined> = {
+  capture: "PAID",
+  settlement: "PAID",
+  pending: "PENDING",
+  deny: "FAILED",
+  cancel: "EXPIRED",
+  expire: "EXPIRED",
+  refund: "REFUNDED",
+  partial_refund: "REFUNDED",
+};
+
+// §9.4: a settled invoice must never walk back to PENDING just because a
+// stale notification arrived late. Mirrors ALLOWED_TRANSITIONS in
+// paymentService.ts, which the POS path has always had and this path did not.
+const ALLOWED_INVOICE_TRANSITIONS: Record<InvoiceStatus, InvoiceStatus[]> = {
+  PENDING: ["PENDING", "PAID", "FAILED", "EXPIRED"],
+  PAID: ["PAID", "REFUNDED"],
+  FAILED: ["FAILED"],
+  EXPIRED: ["EXPIRED"],
+  REFUNDED: ["REFUNDED"],
+};
+
+// Signature verification happens in routeMidtransNotification() before this
+// is reached (§23.5) — never call this from an unverified path.
+//
+// Returns rather than throws for "nothing to apply" outcomes so the webhook
+// route can still ack 200: a notification Midtrans would keep retrying
+// forever is worse than one that is acknowledged and ignored. Previously an
+// unknown invoice threw Errors.notFound("Invoice"), which surfaced as a 404
+// and left Midtrans retrying indefinitely.
 export async function processSubscriptionInvoiceNotification(
   providerOrderId: string,
-): Promise<void> {
+): Promise<NotificationResult> {
   await connectDB();
 
   // Verify this is a subscription invoice by prefix
@@ -145,39 +190,45 @@ export async function processSubscriptionInvoiceNotification(
     throw Errors.businessRule("Not a subscription invoice");
   }
 
-  const invoice = await SubscriptionInvoiceModel.findOne({
-    providerOrderId,
-  }).populate("subscription");
+  const invoice = await SubscriptionInvoiceModel.findOne({ providerOrderId });
   if (!invoice) {
-    throw Errors.notFound("Invoice");
+    logger.warn("Midtrans notification for unknown subscription invoice", {
+      orderId: providerOrderId,
+    });
+    return { applied: false, reason: "unknown_order" };
   }
 
-  // Re-fetch authoritative status from Midtrans
+  // Re-fetch authoritative status from Midtrans — the webhook body is never
+  // trusted for anything beyond routing (§9.2 step 2).
   const midtransStatus = await getTransactionStatus(providerOrderId);
 
-  // Map Midtrans status to invoice status
-  const STATUS_MAP: Record<string, string> = {
-    capture: "PAID",
-    settlement: "PAID",
-    pending: "PENDING",
-    deny: "FAILED",
-    cancel: "EXPIRED",
-    expire: "EXPIRED",
-    refund: "REFUNDED",
-    partial_refund: "REFUNDED",
-  };
-
-  const newStatus = STATUS_MAP[midtransStatus.transactionStatus] || "PENDING";
-
-  // Check if status changed
-  if (invoice.status === newStatus) {
-    // Idempotent: no change needed
-    invoice.lastNotificationAt = new Date();
-    await invoice.save();
-    return;
+  const newStatus = INVOICE_STATUS_MAP[midtransStatus.transactionStatus];
+  if (!newStatus) {
+    logger.warn("Unrecognized Midtrans transaction_status for invoice", {
+      status: midtransStatus.transactionStatus,
+      orderId: providerOrderId,
+    });
+    return { applied: false, reason: "unmapped_status" };
   }
 
-  // Update invoice status
+  const currentStatus = invoice.status as InvoiceStatus;
+
+  if (currentStatus === newStatus) {
+    // Idempotent: record that we heard from Midtrans, change nothing else.
+    invoice.lastNotificationAt = new Date();
+    await invoice.save();
+    return { applied: true, reason: "idempotent_no_op" };
+  }
+
+  if (!ALLOWED_INVOICE_TRANSITIONS[currentStatus].includes(newStatus)) {
+    logger.warn("Rejected invalid subscription invoice status transition", {
+      invoiceId: invoice._id.toString(),
+      from: currentStatus,
+      to: newStatus,
+    });
+    return { applied: false, reason: "invalid_transition" };
+  }
+
   invoice.status = newStatus;
   invoice.lastNotificationAt = new Date();
 
@@ -191,15 +242,22 @@ export async function processSubscriptionInvoiceNotification(
 
   await invoice.save();
 
-  // Update subscription status if invoice is paid
-  const subscription = invoice.populated("subscription");
-  if (subscription && newStatus === "PAID") {
-    subscription.status = "ACTIVE";
-    subscription.currentPeriodStart = invoice.periodStart;
-    subscription.currentPeriodEnd = invoice.periodEnd;
-    subscription.graceEndsAt = undefined;
-    await subscription.save();
+  if (newStatus === "PAID") {
+    // Loaded by id rather than via .populate("subscription"): Mongoose's
+    // doc.populated(path) returns the populated _id, NOT the document, so
+    // the previous code called .save() on an ObjectId and threw a
+    // TypeError on exactly the path that activates a paid subscription.
+    const subscription = await SubscriptionModel.findById(invoice.subscription);
+    if (subscription) {
+      subscription.status = "ACTIVE";
+      subscription.currentPeriodStart = invoice.periodStart;
+      subscription.currentPeriodEnd = invoice.periodEnd;
+      subscription.graceEndsAt = undefined;
+      await subscription.save();
+    }
   }
+
+  return { applied: true, reason: "status_updated" };
 }
 
 export async function expireOverdueInvoices(): Promise<number> {

@@ -1,29 +1,35 @@
 // @/app/api/v1/subscription/invoices/[id]/route.ts
 import type { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/authorization";
-import { successResponse, withErrorHandling } from "@/lib/errors";
+import { requireAuth, requireRole } from "@/lib/authorization";
+import { Errors, successResponse, withErrorHandling } from "@/lib/errors";
 import { getInvoiceById } from "@/services/billingService";
 import { getSubscriptionByHostId } from "@/services/subscriptionService";
 
 export const GET = withErrorHandling<{ id: string }>(
   async (request: NextRequest, { params }) => {
-    const user = await requireAuth(request);
+    const user = await requireAuth(request, { subscriptionExempt: true });
+    // §3.2: subscription and invoices are the HOST's own billing data;
+    // AGENT and GROOMA_ADMIN have no entry here.
+    requireRole(user, ["HOST"]);
     const { id } = await params;
 
-    // Verify ownership: invoice must belong to user's subscription
+    // These were raw `new Error("NOT_FOUND"/"FORBIDDEN")`, which
+    // handleApiError has no string-matching for — every one of them became a
+    // 500 INTERNAL_ERROR logged as "Unhandled API error", including the
+    // ordinary "someone else's invoice" case.
     const subscription = await getSubscriptionByHostId(user.id);
     if (!subscription) {
-      throw new Error("NOT_FOUND");
+      throw Errors.notFound("Subscription not found.");
     }
 
     const invoice = await getInvoiceById(id);
     if (!invoice) {
-      throw new Error("NOT_FOUND");
+      throw Errors.notFound("Invoice not found.");
     }
 
     // Verify invoice belongs to user's subscription
     if (String(invoice.subscription) !== String(subscription._id)) {
-      throw new Error("FORBIDDEN");
+      throw Errors.forbidden();
     }
 
     return successResponse({ invoice });

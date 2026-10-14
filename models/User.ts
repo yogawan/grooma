@@ -57,18 +57,6 @@ const UserSchema = new Schema(
       default: "ACTIVE",
     },
 
-    // §9.6: only meaningful for role HOST — AGENT and GROOMA_ADMIN carry the
-    // default and it is never read for them. Changeable only by
-    // GROOMA_ADMIN (§5.1), so it is absent from every /users and /profile
-    // schema; PATCH /admin/hosts/:id/payment-integration-mode is the one
-    // way in. Defaults to MANAGED so existing accounts keep the Midtrans
-    // behavior they had before this field existed.
-    paymentIntegrationMode: {
-      type: String,
-      enum: ["MANAGED", "SELF_RECORDED"],
-      default: "MANAGED",
-    },
-
     compensation: {
       regularSalary: {
         type: Number,

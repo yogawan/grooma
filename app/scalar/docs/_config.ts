@@ -5,13 +5,43 @@ export const info = {
   version: "0.1.0",
 };
 
-export const servers = [
-  { url: "http://localhost:3000", description: "Development server" },
-  {
-    url: "https://grooma-core-service.vercel.app",
-    description: "Production server (placeholder — update once deployed)",
-  },
-];
+// One deployment serves one HOST (PRD §3.5), so there is no single "the
+// production server" to name here — a hardcoded URL would be wrong on every
+// deployment but the one it was written for. The base URL comes from the
+// deployment's own environment instead.
+//
+// APP_BASE_URL is the explicit setting; VERCEL_PROJECT_PRODUCTION_URL /
+// VERCEL_URL are read as a convenience so a Vercel deployment needs no extra
+// configuration. Docs are hidden entirely when
+// APPLICATION_ENVIRONMENT=production (see ./route.ts), so in practice this
+// list describes the dev or staging instance being browsed.
+function resolveBaseUrl(): string | null {
+  const explicit = process.env.APP_BASE_URL?.trim();
+  if (explicit) {
+    return explicit.replace(/\/+$/, "");
+  }
+
+  const vercelHost =
+    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
+    process.env.VERCEL_URL?.trim();
+  if (vercelHost) {
+    return `https://${vercelHost.replace(/\/+$/, "")}`;
+  }
+
+  return null;
+}
+
+const LOCAL_SERVER = {
+  url: "http://localhost:3000",
+  description: "Development server",
+};
+
+const baseUrl = resolveBaseUrl();
+
+export const servers =
+  baseUrl && baseUrl !== LOCAL_SERVER.url
+    ? [{ url: baseUrl, description: "This deployment" }, LOCAL_SERVER]
+    : [LOCAL_SERVER];
 
 // Global default; endpoints that are actually public (login, the Midtrans
 // webhook) override this with `security: []` on the operation itself.

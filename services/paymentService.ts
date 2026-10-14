@@ -10,57 +10,15 @@ import {
   verifyNotificationSignature,
 } from "@/lib/midtrans";
 import { connectDB } from "@/lib/mongodb";
+import { getPaymentIntegrationMode } from "@/lib/paymentConfig";
 import { escapeRegex, extractRefId } from "@/lib/utils";
-import BranchModel from "@/models/Branch";
 import PaymentModel from "@/models/Payment";
 import TransactionModel from "@/models/Transaction";
-import UserModel from "@/models/User";
 
 interface TransactionForPayment {
   _id: unknown;
   transactionCode: string;
   total: number;
-}
-
-export type PaymentIntegrationMode = "MANAGED" | "SELF_RECORDED";
-
-// §9.6: the mode is configured on the HOST account that owns the branch, so
-// resolving it for a transaction means branch -> host -> mode.
-//
-// Falls back to MANAGED whenever that chain can't be followed — a branch
-// predating Branch.host, a host account since deleted, or a `host` pointing
-// at a non-HOST user. MANAGED is the pre-existing behavior (always charge
-// via Midtrans), so an unresolvable chain degrades to "what this code did
-// before the field existed" rather than silently marking money as received.
-export async function resolvePaymentIntegrationMode(
-  branch: { host?: unknown } | null,
-): Promise<PaymentIntegrationMode> {
-  if (!branch?.host) {
-    return "MANAGED";
-  }
-
-  await connectDB();
-  const host = await UserModel.findById(extractRefId(branch.host))
-    .select("role paymentIntegrationMode")
-    .lean();
-
-  if (!host || host.role !== "HOST") {
-    return "MANAGED";
-  }
-
-  return host.paymentIntegrationMode === "SELF_RECORDED"
-    ? "SELF_RECORDED"
-    : "MANAGED";
-}
-
-// Same resolution as above, starting from a branch id instead of an already
-// loaded branch document.
-export async function resolvePaymentIntegrationModeByBranchId(
-  branchId: string,
-): Promise<PaymentIntegrationMode> {
-  await connectDB();
-  const branch = await BranchModel.findById(branchId).select("host").lean();
-  return resolvePaymentIntegrationMode(branch);
 }
 
 // Each regeneration gets its own order id (suffixed -R2, -R3, ...) so
@@ -122,14 +80,11 @@ export async function createQrisPayment(
     throw Errors.businessRule("Transaction payment method is not QRIS.");
   }
 
-  // §9.6: a SELF_RECORDED host collects via its own QRIS outside Grooma, so
-  // there is no Midtrans order to create here. Checked before the
-  // already-paid guard below, which such a transaction would also trip —
-  // but with a message that misleads about why.
-  const mode = await resolvePaymentIntegrationModeByBranchId(
-    extractRefId(transaction.branch),
-  );
-  if (mode === "SELF_RECORDED") {
+  // §9.6: a SELF_RECORDED deployment's host collects via its own QRIS
+  // outside Grooma, so there is no Midtrans order to create here. Checked
+  // before the already-paid guard below, which such a transaction would
+  // also trip — but with a message that misleads about why.
+  if (getPaymentIntegrationMode() === "SELF_RECORDED") {
     throw Errors.businessRule(
       "This host records QRIS payments outside Grooma; no payment order is created.",
     );
@@ -337,12 +292,27 @@ export async function processMidtransNotification(
 }
 
 // §9.5: Route Midtrans notification to Payment or SubscriptionInvoice
-// handler based on providerOrderId prefix
+// handler based on providerOrderId prefix.
+//
+// §23.5 requires the subscription path to enforce the same signature
+// verification as the POS path with no shortcut, so verification happens
+// HERE — before the prefix is even looked at. It previously lived only
+// inside processMidtransNotification(), which left the GRM-SUB branch
+// reachable by anyone who could POST to the public webhook route.
+// processMidtransNotification() keeps its own check as defense in depth: it
+// is exported, so it must stay safe when called directly.
 export async function routeMidtransNotification(
   rawBody: unknown,
 ): Promise<NotificationResult> {
   if (!isNotificationPayload(rawBody)) {
     throw Errors.validation("Malformed Midtrans notification payload.");
+  }
+
+  if (!verifyNotificationSignature(rawBody)) {
+    logger.warn("Midtrans notification signature mismatch", {
+      orderId: rawBody.order_id,
+    });
+    throw Errors.forbidden("Invalid notification signature.");
   }
 
   const orderId = rawBody.order_id;
@@ -353,20 +323,9 @@ export async function routeMidtransNotification(
     const { processSubscriptionInvoiceNotification } = await import(
       "./billingService"
     );
-    try {
-      await processSubscriptionInvoiceNotification(orderId);
-      return { applied: true, reason: "status_updated" };
-    } catch (error) {
-      if (error instanceof Error && error.message === "NOT_FOUND") {
-        logger.warn("Midtrans notification for unknown subscription invoice", {
-          orderId,
-        });
-        return { applied: false, reason: "unknown_order" };
-      }
-      throw error;
-    }
-  } else {
-    // POS Transaction payment notification — use existing handler
-    return processMidtransNotification(rawBody);
+    return processSubscriptionInvoiceNotification(orderId);
   }
+
+  // POS Transaction payment notification — use existing handler
+  return processMidtransNotification(rawBody);
 }

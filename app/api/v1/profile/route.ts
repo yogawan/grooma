@@ -13,13 +13,13 @@ import { updateProfileSchema } from "@/validations/userSchema";
 // No requireRole gate: HOST, AGENT, and GROOMA_ADMIN all manage their own
 // profile (§3.2 matrix — "own profile only" applies equally to all three).
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  const user = await requireAuth(request);
+  const user = await requireAuth(request, { subscriptionExempt: true });
   const profile = await getOwnProfile(user);
   return successResponse({ user: profile });
 });
 
 export const PATCH = withErrorHandling(async (request: NextRequest) => {
-  const user = await requireAuth(request);
+  const user = await requireAuth(request, { subscriptionExempt: true });
 
   const parsed = updateProfileSchema.safeParse(await parseJsonBody(request));
   if (!parsed.success) {

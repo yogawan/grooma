@@ -31,7 +31,7 @@ Backend Grooma bertanggung jawab atas autentikasi pengguna, otorisasi berbasis r
 ## 1.3. Target Users
 
 ### HOST
-Pengelola atau administrator Grooma yang memiliki akses lintas cabang untuk mengawasi operasional, menyetujui perubahan transaksi, mengelola cabang, serta mengelola master data. Setiap akun HOST memiliki salah satu **mode integrasi pembayaran** (§9.6): `MANAGED` (QRIS dibuat dan diproses lewat akun Midtrans milik Grooma) atau `SELF_RECORDED` (HOST memakai QRIS/metode pembayarannya sendiri di luar Grooma; Grooma hanya mencatat transaksi untuk laporan dan sentralisasi akuntansi lintas cabang).
+Pengelola atau administrator Grooma yang memiliki akses lintas cabang untuk mengawasi operasional, menyetujui perubahan transaksi, mengelola cabang, serta mengelola master data. Setiap HOST memiliki deployment-nya sendiri (§3.5) dengan salah satu **mode integrasi pembayaran** (§9.6): `MANAGED` (QRIS dibuat dan diproses lewat akun Midtrans milik HOST itu sendiri) atau `SELF_RECORDED` (HOST memakai QRIS/metode pembayarannya sendiri di luar Grooma; Grooma hanya mencatat transaksi untuk laporan dan sentralisasi akuntansi lintas cabang).
 
 ### AGENT
 Pegawai operasional barbershop yang bertanggung jawab mencatat transaksi, mengelola inventaris cabangnya, melihat dashboard, dan mengajukan koreksi transaksi.
@@ -65,6 +65,8 @@ Grooma menggunakan pendekatan modular monolith.
 Seluruh modul backend berada dalam satu aplikasi Next.js, tetapi dipisahkan berdasarkan domain bisnis agar mudah dikembangkan, diuji, dan dipelihara.
 
 Tidak diperlukan microservices pada tahap MVP.
+
+Monolith ini di-deploy **satu instance per HOST**, masing-masing dengan database dan konfigurasi pembayarannya sendiri (§3.5). Kredensial Midtrans pada sebuah deployment adalah milik HOST deployment tersebut, bukan kredensial bersama milik platform — dan tidak ada sama sekali pada deployment bermode `SELF_RECORDED` (§9.6).
 
 ---
 
@@ -170,6 +172,29 @@ HOST dapat mengakses seluruh cabang, tetapi tetap harus menggunakan filter caban
 
 `GROOMA_ADMIN` tidak tunduk pada branch-based authorization karena tidak memiliki cabang. Status subscription salah satu akun HOST tidak pernah memengaruhi kemampuan login atau akses AGENT pada cabang manapun — pembatasan hanya berlaku pada akun HOST yang bersangkutan (lihat §23.4).
 
+## 3.5. Model Tenancy & Arsitektur Deployment
+
+**Grooma menggunakan pendekatan satu deployment untuk satu HOST (satu bisnis barbershop).** Isolasi antar bisnis terjadi di level infrastruktur, bukan di level query di dalam aplikasi.
+
+Setiap bisnis yang bergabung mendapatkan:
+
+1. Deployment aplikasi tersendiri yang terisolasi.
+2. `MONGODB_URI` tersendiri, sehingga data tiap bisnis berada pada database terpisah.
+3. Akun Midtrans tersendiri — **hanya** apabila HOST memilih mode `MANAGED`. HOST yang memakai QRIS miliknya sendiri (`SELF_RECORDED`) tidak memerlukan akun Midtrans sama sekali (§9.6).
+4. Endpoint API tersendiri; aplikasi mobile di-build ulang dengan base URL deployment tersebut.
+
+Prosedur lengkapnya ada di `docs/PROVISIONING-HOST.md`.
+
+Konsekuensi yang perlu dipahami sebelum menambah fitur apa pun:
+
+- **Satu deployment hanya memiliki satu akun HOST.** Cabang, customer, layanan, inventaris, dan transaksi di dalamnya seluruhnya milik HOST tersebut.
+- §3.3 ("HOST dapat mengakses seluruh cabang") adalah konsekuensi langsung dari model ini, bukan celah otorisasi yang belum ditutup — tidak ada HOST lain di dalam deployment yang datanya bisa bocor.
+- `Customer` dan `Service` sengaja tidak memiliki referensi cabang atau HOST: keduanya adalah master data milik satu bisnis tersebut (§5.3, §5.4). `Branch` juga tidak menyimpan referensi HOST (§5.2).
+- Konfigurasi pembayaran adalah properti deployment (environment variable), bukan baris di database (§9.6).
+- **Tidak ada *tenant boundary* di dalam kode, dan tidak seharusnya ada.** Jika suatu saat Grooma perlu melayani banyak bisnis dalam satu deployment, itu perubahan arsitektur tersendiri yang minimal menyentuh: penambahan referensi tenant pada `Branch`/`Customer`/`Service`, perubahan unique index `serviceCode`/`customerCode` menjadi compound per tenant, dedupe customer by-phone menjadi per tenant, scoping pada seluruh service dan agregasi dashboard, serta penulisan ulang model billing §23.1.
+
+**Catatan:** apabila lebih dari satu akun HOST dibuat pada deployment yang sama (mis. beberapa co-owner), mereka akan berbagi seluruh data operasional dan tunduk pada mode pembayaran deployment yang sama. Secara teknis hal ini tetap berfungsi dan konsisten, tetapi masing-masing akun HOST tetap ditagih subscription-nya sendiri (§23.1).
+
 ---
 
 # 4. Core Business Modules
@@ -216,7 +241,6 @@ Field:
 - `photoUrl`
 - `status`: `ACTIVE | INACTIVE`
 - `compensation`
-- `paymentIntegrationMode`: `MANAGED | SELF_RECORDED` — hanya relevan untuk `role = HOST` (lihat §9.6); tidak berlaku/diabaikan untuk AGENT dan GROOMA_ADMIN
 - `createdAt`
 - `updatedAt`
 
@@ -227,7 +251,6 @@ Aturan:
 - AGENT wajib memiliki cabang aktif.
 - Akun INACTIVE tidak dapat melakukan login.
 - Role dan branch assignment hanya dapat diubah oleh HOST yang berwenang.
-- `paymentIntegrationMode` default `MANAGED` saat akun HOST dibuat (mempertahankan perilaku yang sudah ada). Hanya `GROOMA_ADMIN` yang dapat mengubah nilai ini — bukan self-service oleh HOST — karena pindah ke `MANAGED` berarti Grooma mulai menampung dana pelanggan HOST tersebut (lihat §9.6).
 
 ## 5.2. Branch
 
@@ -236,7 +259,6 @@ Menyimpan data setiap cabang barbershop.
 Field:
 - `_id`
 - `branchCode`: unique
-- `host`: reference ke User (role `HOST`) yang memiliki cabang ini
 - `name`
 - `address`
 - `phone`
@@ -247,9 +269,7 @@ Field:
 
 Aturan:
 - `branchCode` harus unik.
-- `host` diisi otomatis dari session HOST yang membuat cabang, tidak diterima dari request body (prinsip yang sama dengan §8.3).
-- `host` berfungsi **khusus** untuk menentukan `paymentIntegrationMode` yang berlaku pada transaksi cabang ini (§9.6). Field ini **bukan** batas otorisasi: §3.3 tetap berlaku — setiap HOST dapat mengakses seluruh cabang, termasuk cabang yang `host`-nya akun HOST lain.
-- `host` boleh `null` untuk cabang yang dibuat sebelum field ini ada; transaksi pada cabang tersebut diperlakukan sebagai `MANAGED` (§9.6).
+- Cabang tidak menyimpan referensi ke akun HOST pemiliknya: seluruh cabang pada satu deployment milik satu HOST yang sama (§3.5), sehingga referensi tersebut tidak akan pernah membedakan apa pun.
 - HOST dapat membuat, melihat, memperbarui, dan menonaktifkan cabang.
 - AGENT tidak dapat mengelola data cabang.
 - Cabang yang sudah memiliki transaksi tidak boleh dihapus secara permanen melalui operasi normal.
@@ -781,7 +801,6 @@ Untuk `GROOMA_ADMIN` (namespace `/admin`, lihat §6.4):
 | GET | `/admin/subscriptions/:id` | GROOMA_ADMIN | Detail subscription |
 | PATCH | `/admin/subscriptions/:id/status` | GROOMA_ADMIN | Override manual status |
 | GET | `/admin/subscriptions/:id/invoices` | GROOMA_ADMIN | Riwayat invoice milik satu HOST |
-| PATCH | `/admin/hosts/:id/payment-integration-mode` | GROOMA_ADMIN | Set `paymentIntegrationMode` satu akun HOST (§9.6) |
 
 Sistem (dipicu scheduled job, bukan role user biasa — autentikasi pakai secret terpisah):
 
@@ -932,30 +951,33 @@ Pembayaran yang sudah sukses tidak boleh dikembalikan ke PENDING hanya karena no
 
 `POST /payments/midtrans/notification` harus menentukan domain target (`Payment` transaksi atau `SubscriptionInvoice`) berdasarkan prefix tersebut sebelum menerapkan logika idempotensi dan transisi status yang sama seperti §9.2–§9.4.
 
-## 9.6. Mode Integrasi Pembayaran per HOST
+## 9.6. Mode Integrasi Pembayaran
 
-Setiap akun HOST memiliki `paymentIntegrationMode` (§5.1) yang menentukan apakah §8–§9 di atas berlaku penuh untuk transaksi cabang-cabangnya, atau dilewati sama sekali.
+Karena satu deployment melayani tepat satu HOST (§3.5), cara HOST tersebut menerima pembayaran QRIS adalah **properti deployment**, bukan data di dalam database. Mode ditentukan environment variable `PAYMENT_INTEGRATION_MODE`, di-set sekali saat provisioning (lihat `docs/PROVISIONING-HOST.md`).
+
+Mode ini menentukan apakah §8–§9 di atas berlaku penuh untuk transaksi deployment ini, atau dilewati sama sekali.
 
 ### MANAGED
 
-- Default untuk akun HOST yang sudah ada maupun baru dibuat.
-- §8.2 langkah 10 dan §9.1–§9.4 berlaku apa adanya: `paymentMethod: QRIS` membuat payment order di Midtrans **milik Grooma** (bukan milik HOST — lihat §2, satu kredensial `MIDTRANS_SERVER_KEY`/`MIDTRANS_CLIENT_KEY` untuk seluruh platform), `paymentStatus` dimulai `PENDING`, lalu menjadi `PAID` lewat webhook setelah Midtrans mengonfirmasi.
-- Konsekuensi: dana pelanggan settle ke saldo Midtrans milik Grooma terlebih dahulu, bukan langsung ke rekening HOST. **Penyaluran dana dari saldo tersebut ke rekening bank HOST (ledger per-HOST + disbursement) adalah kapabilitas terpisah yang belum dibangun** (§20). Sampai kapabilitas itu tersedia, mode ini membuat Grooma menampung dana pelanggan HOST tanpa jalur pencairan ke HOST yang bersangkutan — tinjauan legal (penampungan dana pihak ketiga umumnya diatur oleh BI sebagai aktivitas payment aggregator) wajib selesai sebelum mode ini ditawarkan ke HOST produksi, bukan sekadar keputusan teknis.
+- Nilai default apabila `PAYMENT_INTEGRATION_MODE` tidak di-set.
+- §8.2 langkah 10 dan §9.1–§9.4 berlaku apa adanya: `paymentMethod: QRIS` membuat payment order Midtrans, `paymentStatus` dimulai `PENDING`, lalu menjadi `PAID` lewat webhook setelah Midtrans mengonfirmasi.
+- `MIDTRANS_SERVER_KEY`/`MIDTRANS_CLIENT_KEY` pada deployment ini adalah kredensial **akun Midtrans milik HOST itu sendiri**, yang dibuat khusus untuk HOST tersebut saat onboarding — bukan satu akun Midtrans bersama milik Grooma.
+- Konsekuensinya penting: **dana pelanggan settle langsung ke saldo Midtrans dan rekening bank milik HOST**. Grooma tidak pernah menampung dana HOST, sehingga tidak dibutuhkan ledger saldo per-HOST maupun mekanisme disbursement, dan Grooma tidak menjalankan aktivitas penampungan/penyaluran dana pihak ketiga yang diatur sebagai payment aggregator.
+- Kredensial wajib ada pada mode ini. Aplikasi **gagal start** bila `PAYMENT_INTEGRATION_MODE=MANAGED` tetapi kredensial Midtrans kosong — disengaja, agar kesalahan konfigurasi muncul saat deploy, bukan saat kasir pertama kali melayani pelanggan.
 
 ### SELF_RECORDED
 
-- HOST sudah memiliki QRIS atau metode pembayaran sendiri di luar Grooma (mis. QRIS bank/e-wallet miliknya) yang dipakai langsung oleh pelanggan di cabang.
-- Grooma tidak membuat payment order apa pun untuk transaksi `paymentMethod: QRIS` milik HOST bermode ini: `POST /payments/qris` (§7.8) tidak dipanggil, dan `POST /payments/midtrans/notification` tidak pernah menerima notifikasi untuk transaksi-transaksi ini.
+- HOST sudah memiliki QRIS atau metode pembayaran sendiri di luar Grooma (mis. QRIS bank/e-wallet miliknya) yang dipakai langsung oleh pelanggan di cabang. **Tidak ada akun Midtrans yang dibuat untuk HOST ini.**
+- Grooma tidak membuat payment order apa pun: `POST /payments/qris` (§7.8) menolak permintaan dengan error bisnis, dan `POST /payments/midtrans/notification` tidak pernah menerima notifikasi.
 - `paymentStatus` langsung `PAID` saat transaksi dibuat — sama seperti `paymentMethod: CASH` — backend memercayai input AGENT tanpa verifikasi gateway apa pun.
-- `paymentMethod` tetap dicatat `QRIS` (tidak disamakan dengan `CASH`), supaya dashboard (§12) tetap bisa membedakan uang yang masuk lewat QRIS milik HOST sendiri vs. uang tunai fisik di cabang — keduanya sama-sama murni tercatat untuk dokumentasi dan sentralisasi akuntansi lintas cabang, tanpa Grooma pernah memegang dananya.
+- `paymentMethod` tetap dicatat `QRIS` (tidak disamakan dengan `CASH`), supaya dashboard (§12) tetap bisa membedakan uang yang masuk lewat QRIS milik HOST sendiri vs. uang tunai fisik di cabang — keduanya sama-sama murni tercatat untuk dokumentasi dan sentralisasi akuntansi lintas cabang.
+- Variabel `MIDTRANS_*` dibiarkan kosong. Kredensial Midtrans dibaca secara lazy (hanya saat benar-benar akan dipakai), sehingga seluruh route transaksi tetap berfungsi normal pada deployment tanpa akun Midtrans.
 
 ### Catatan Umum
 
-- Mode ini adalah pengaturan tingkat akun HOST, berlaku untuk seluruh cabang di bawah HOST tersebut — bukan pengaturan per-cabang.
-- **Resolusi mode untuk sebuah transaksi**: `Transaction.branch` → `Branch.host` → `User.paymentIntegrationMode` (§5.2). Cabang yang `host`-nya `null` (dibuat sebelum field tersebut ada, atau `host`-nya menunjuk akun non-HOST/sudah terhapus) diperlakukan `MANAGED` — yaitu perilaku yang berlaku sebelum field ini diperkenalkan. Fallback ini sengaja mengarah ke `MANAGED`, bukan `SELF_RECORDED`, agar kegagalan resolusi tidak pernah menandai uang sebagai sudah diterima tanpa verifikasi.
-- `Branch.host` **tidak mengubah aturan otorisasi** §3.3 — setiap HOST tetap dapat melihat dan mengelola seluruh cabang, termasuk cabang milik HOST lain. Pemisahan akses antar HOST (tenant boundary) bukan bagian dari section ini dan belum ada di sistem.
-- Hanya `GROOMA_ADMIN` yang dapat mengubah `paymentIntegrationMode` (§5.1) — perubahan ke `MANAGED` punya implikasi penampungan dana yang perlu ditinjau kasus per kasus, bukan toggle self-service oleh HOST.
-- Mode ini **tidak memengaruhi** pembayaran subscription HOST ke Grooma sendiri (§23) — pembayaran subscription selalu memakai akun Midtrans milik Grooma apa pun `paymentIntegrationMode` HOST yang bersangkutan, karena itu transaksi HOST-ke-Grooma (biaya lisensi), bukan transaksi customer-ke-HOST yang dicakup section ini.
+- Mengubah mode berarti mengubah environment variable dan melakukan redeploy — bukan panggilan API. Tidak ada endpoint untuk mengubah mode, dan `GROOMA_ADMIN` tidak terlibat di dalamnya.
+- Mode berlaku untuk seluruh cabang pada deployment tersebut; tidak ada pengaturan per-cabang maupun per-akun.
+- Mode ini **tidak memengaruhi** pembayaran subscription HOST ke Grooma sendiri (§23) — lihat §23.1 soal bagaimana billing bekerja pada arsitektur satu deployment per HOST.
 
 ---
 
@@ -1383,7 +1405,6 @@ Fitur berikut tidak termasuk implementasi awal:
 - Advanced accounting.
 - Offline POS synchronization.
 - Fitur lanjutan subscription: proration, multi-tier plan, auto-recurring charge (tokenisasi kartu), refund otomatis, faktur pajak, reminder otomatis sebelum jatuh tempo — lihat §23.6.
-- Ledger saldo per-HOST dan disbursement (pencairan dana ke rekening HOST) untuk mode `MANAGED` — lihat §9.6. Mode `MANAGED` sebatas membuat & menerima status pembayaran QRIS; belum ada jalur pencairan dana ke HOST.
 
 Fitur tersebut dapat dimasukkan ke roadmap setelah proses transaksi, pembayaran, dan otorisasi stabil.
 
@@ -1435,7 +1456,8 @@ Section ini ditambahkan di v1.1 untuk mendefinisikan monetisasi platform: HOST m
 
 ## 23.1. Model Bisnis
 
-- Billing bersifat **per akun HOST** (seat-based), bukan per bisnis/tenant — satu deployment Grooma tetap melayani satu bisnis barbershop (sesuai §3.3), dan setiap akun HOST yang dibuat membayar subscription-nya sendiri-sendiri.
+- Billing bersifat **per akun HOST** (seat-based). Karena satu deployment melayani satu HOST (§3.5), dalam praktiknya satu deployment menagih satu subscription.
+- **Implikasi arsitektur yang perlu disadari:** modul ini (`/admin/subscriptions`, §7.11) dirancang sebagai dashboard platform yang melihat subscription *seluruh* HOST, padahal pada arsitektur satu deployment per HOST setiap database hanya memuat satu `Subscription`. Pandangan lintas-HOST karena itu tidak berada di dalam deployment manapun — tempatnya di aplikasi web admin terpusat yang mengagregasi banyak deployment. `GROOMA_ADMIN` di dalam sebuah deployment hanya mengelola subscription HOST deployment tersebut.
 - Biaya saat ini **Rp50.000/bulan** per akun HOST, disimpan sebagai data (`SubscriptionPlan.price`), bukan nilai hardcoded, agar dapat diubah `GROOMA_ADMIN` dari dashboard admin tanpa deploy ulang.
 - Subscription tidak memengaruhi operasional POS: AGENT dan transaksi cabang tetap berjalan normal terlepas dari status subscription HOST manapun.
 - Pembayaran subscription ini selalu memakai akun Midtrans milik Grooma, terlepas dari `paymentIntegrationMode` (§9.6) yang dipilih HOST untuk transaksi POS-nya sendiri — keduanya hubungan pembayaran yang berbeda (HOST-ke-Grooma untuk lisensi, vs. customer-ke-HOST untuk transaksi POS).

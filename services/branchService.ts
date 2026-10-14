@@ -10,15 +10,9 @@ import type {
   UpdateBranchInput,
 } from "@/validations/branchSchema";
 
-// `host` comes from the creating HOST's session, never the request body —
-// same principle as agent/branch on a transaction (§8.3). Only HOST can
-// reach this (route-level requireRole), so the session user *is* the owner.
-export async function createBranch(
-  user: SessionUser,
-  input: CreateBranchInput,
-) {
+export async function createBranch(input: CreateBranchInput) {
   await connectDB();
-  return BranchModel.create({ ...input, host: user.id });
+  return BranchModel.create(input);
 }
 
 // §7.4: "List accessible branches" — HOST sees every branch, AGENT only its own.

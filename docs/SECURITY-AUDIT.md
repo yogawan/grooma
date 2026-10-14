@@ -2,6 +2,8 @@
 
 Systematic review against PRD §15 (Security considerations). Status: IN PROGRESS
 
+> **Koreksi (Oktober 2026).** Sesi hardening berikutnya menemukan beberapa celah di area yang dokumen ini tandai sebagai terverifikasi — terutama otorisasi (§15.6) dan verifikasi webhook. Bagian-bagian yang terdampak sudah diberi catatan inline di bawah. Catatan lengkap, termasuk bug yang ditemukan dan hasil verifikasi terbaru, ada di **`docs/HARDENING-SESSION-2026-10.md`**. Sisa isi dokumen ini masih berlaku.
+
 ## §15.1: Authentication & Session Handling ✓
 
 **Requirement:** Secure session management, no hardcoded secrets
@@ -17,8 +19,9 @@ Systematic review against PRD §15 (Security considerations). Status: IN PROGRES
 - ✓ Logout: deletes session, clears cookie
 
 **Notes:**
-- Session invalidation on password change: NOT implemented (would require `revokeAllSessions` primitive). Acceptable for MVP.
+- ~~Session invalidation on password change: NOT implemented~~ — **sudah diimplementasikan** (Okt 2026): `revokeOtherSessions()` di `lib/auth.ts`, dipanggil dari `POST /auth/change-password`. Sesi perangkat saat ini dipertahankan, sesi lain dicabut.
 - Multi-device session tracking: NOT implemented (single active session per user assumed).
+- Catatan rate limit login "10/15min per IP" di atas tetap benar, tetapi **cara alamat klien ditentukan sudah berubah** (Okt 2026): `getClientIp` dulu memakai entri paling kiri `X-Forwarded-For` yang dapat dipalsukan sehingga throttle bisa dilewati. Sekarang menghitung hop dari kanan sesuai `TRUSTED_PROXY_HOP_COUNT`.
 
 ---
 
@@ -43,6 +46,8 @@ Systematic review against PRD §15 (Security considerations). Status: IN PROGRES
 - Deferred reason: No phase checklist explicitly lists `lib/csrf.ts` implementation
 - Impact: Medium risk — all mutations are POST/PATCH/DELETE, which require body parsing; CORS is not enabled
 - Mitigation: Browsers block cross-origin requests to POST unless CORS explicitly allows it. For phase 7, document as a post-MVP item.
+
+**Hasil audit lanjutan (Okt 2026) — satu pengecualian ditemukan:** premis "semua mutasi adalah POST/PATCH/DELETE" **tidak sepenuhnya benar**. `GET /api/v1/transactions/:id/receipt` mengubah state (`receipt.printed`, `printedAt`, `printCount++`, lalu `.save()`), dan `sameSite: "lax"` tetap mengirim cookie pada navigasi GET top-level. Risikonya kecil (hanya counter audit cetak, butuh tahu ID transaksi) dan perubahannya **sengaja ditunda**. Detail di `docs/HARDENING-SESSION-2026-10.md` §7.
 
 ---
 
@@ -80,6 +85,8 @@ Systematic review against PRD §15 (Security considerations). Status: IN PROGRES
 ## §15.6: Authorization Boundary Enforcement ✓
 
 **Requirement:** Enforce role-based and branch-based access
+
+> **Koreksi (Okt 2026).** Tanda ✓ pada section ini terlalu dini. Audit lanjutan menemukan bahwa **keenam route dashboard hanya memakai `requireAuth` tanpa `requireRole`**, sehingga GROOMA_ADMIN dapat membaca seluruh revenue, statistik transaksi, performa agent, dan inventaris — melanggar §3.1/§3.2. Selain itu `/subscription*` juga tidak tergate per role, dan **seluruh suite test otorisasi ternyata tidak pernah dieksekusi** (gagal dimuat karena `SESSION_SECRET` tidak tersedia di environment test), sehingga klaim "verified" di dokumen ini tidak didukung test yang benar-benar berjalan. Semuanya sudah diperbaiki — lihat `docs/HARDENING-SESSION-2026-10.md` §2 dan §6.
 
 **Implementation:**
 - ✓ `requireRole()`: Blocks access if user.role not in allowedRoles
@@ -230,10 +237,10 @@ Systematic review against PRD §15 (Security considerations). Status: IN PROGRES
 - Structured logging with redaction
 
 **Post-MVP items (not blockers):**
-- CSRF middleware (low risk due to no CORS, but good practice)
-- Session invalidation on password change
+- CSRF middleware (low risk due to no CORS, but good practice) — lihat pengecualian receipt di §15.3
+- ~~Session invalidation on password change~~ — **selesai** (Okt 2026)
 - Request ID correlation logging
-- API rate limiting per authenticated user (currently per IP for login only)
+- API rate limiting per authenticated user (currently per IP for login only) — limit per-username **sengaja ditunda**, lihat `HARDENING-SESSION-2026-10.md` §7
 - Webhook retry logic + dead-letter queue (Midtrans retries client's 200 response, not built)
 - Payment reconciliation cron job (utility script exists, but not scheduled)
 
@@ -248,3 +255,17 @@ All critical security controls (authentication, authorization, encryption, input
 Post-MVP items are **low-risk enhancements** (CSRF, multi-session management, webhook retry) that do not block launch.
 
 **Sign-off:** Phase 7 security audit COMPLETE.
+
+---
+
+## Koreksi atas Verdict di Atas (Oktober 2026)
+
+Verdict Phase 7 di atas dipertahankan sebagai catatan historis, tetapi **kata "verified" di dalamnya tidak dapat dipegang apa adanya.** Audit lanjutan menemukan bahwa pada saat sign-off itu dibuat:
+
+- Suite test otorisasi tidak pernah dieksekusi sama sekali (gagal dimuat), sehingga kontrol otorisasi tidak pernah benar-benar diuji.
+- Keenam route dashboard tidak tergate per role.
+- Verifikasi signature webhook tidak berlaku pada jalur subscription.
+- `requireActiveSubscription` adalah dead code, sehingga §23.4 tidak ditegakkan.
+- Seluruh siklus billing subscription tidak dapat berfungsi karena penyalahgunaan `doc.populated()`.
+
+Seluruh temuan itu sudah diperbaiki dan kini memiliki regression test. Kondisi terkini, hasil verifikasi aktual, dan **keterbatasan verifikasi** (semua test memakai mock; belum ada pengujian terhadap MongoDB atau Midtrans sungguhan) terdokumentasi di **`docs/HARDENING-SESSION-2026-10.md`**.

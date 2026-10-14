@@ -3,23 +3,46 @@ import { createHash } from "node:crypto";
 import midtransClient from "midtrans-client";
 import { Errors } from "./errors";
 
-const MIDTRANS_SERVER_KEY = process.env.MIDTRANS_SERVER_KEY;
-const MIDTRANS_CLIENT_KEY = process.env.MIDTRANS_CLIENT_KEY;
-const MIDTRANS_IS_PRODUCTION = process.env.MIDTRANS_IS_PRODUCTION === "true";
-
-if (!MIDTRANS_SERVER_KEY || !MIDTRANS_CLIENT_KEY) {
-  throw new Error(
-    "Missing MIDTRANS_SERVER_KEY or MIDTRANS_CLIENT_KEY environment variable.",
-  );
+// Credentials are read lazily, NOT at module scope. A SELF_RECORDED
+// deployment (§9.6) belongs to a host that collects on its own QRIS and
+// therefore has no Midtrans account at all — yet this module sits on the
+// import path of every transaction route (transactionService ->
+// paymentService -> here). Throwing at import time would make those routes
+// fail to load entirely on a perfectly valid deployment.
+function requireServerKey(): string {
+  const serverKey = process.env.MIDTRANS_SERVER_KEY;
+  if (!serverKey) {
+    throw Errors.paymentGateway(
+      "Midtrans is not configured for this deployment (MIDTRANS_SERVER_KEY is unset).",
+    );
+  }
+  return serverKey;
 }
 
 // Credentials never leave the server: this module is only ever imported
 // from route handlers / services, never from client components (§9.1).
-const coreApi = new midtransClient.CoreApi({
-  isProduction: MIDTRANS_IS_PRODUCTION,
-  serverKey: MIDTRANS_SERVER_KEY,
-  clientKey: MIDTRANS_CLIENT_KEY,
-});
+let cachedCoreApi: InstanceType<typeof midtransClient.CoreApi> | null = null;
+
+function getCoreApi() {
+  if (cachedCoreApi) {
+    return cachedCoreApi;
+  }
+
+  const clientKey = process.env.MIDTRANS_CLIENT_KEY;
+  if (!clientKey) {
+    throw Errors.paymentGateway(
+      "Midtrans is not configured for this deployment (MIDTRANS_CLIENT_KEY is unset).",
+    );
+  }
+
+  cachedCoreApi = new midtransClient.CoreApi({
+    isProduction: process.env.MIDTRANS_IS_PRODUCTION === "true",
+    serverKey: requireServerKey(),
+    clientKey,
+  });
+
+  return cachedCoreApi;
+}
 
 const QRIS_EXPIRY_MINUTES = 15;
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -70,7 +93,7 @@ export async function createQrisCharge(params: {
 
   try {
     response = await withTimeout(
-      coreApi.charge({
+      getCoreApi().charge({
         payment_type: "qris",
         transaction_details: {
           order_id: params.orderId,
@@ -129,7 +152,7 @@ export async function getTransactionStatus(
 
   try {
     response = await withTimeout(
-      coreApi.transaction.status(orderId),
+      getCoreApi().transaction.status(orderId),
       "status check",
     );
   } catch (error) {
@@ -162,7 +185,7 @@ export function verifyNotificationSignature(
 ): boolean {
   const expected = createHash("sha512")
     .update(
-      `${payload.order_id}${payload.status_code}${payload.gross_amount}${MIDTRANS_SERVER_KEY}`,
+      `${payload.order_id}${payload.status_code}${payload.gross_amount}${requireServerKey()}`,
     )
     .digest("hex");
 

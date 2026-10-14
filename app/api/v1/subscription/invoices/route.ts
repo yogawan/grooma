@@ -1,6 +1,6 @@
 // @/app/api/v1/subscription/invoices/route.ts
 import type { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/authorization";
+import { requireAuth, requireRole } from "@/lib/authorization";
 import {
   successResponse,
   withErrorHandling,
@@ -11,7 +11,10 @@ import { getSubscriptionByHostId } from "@/services/subscriptionService";
 import { listSubscriptionInvoicesQuerySchema } from "@/validations/subscriptionSchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  const user = await requireAuth(request);
+  const user = await requireAuth(request, { subscriptionExempt: true });
+  // §3.2: subscription and invoices are the HOST's own billing data;
+  // AGENT and GROOMA_ADMIN have no entry here.
+  requireRole(user, ["HOST"]);
 
   // Get HOST's subscription first
   const subscription = await getSubscriptionByHostId(user.id);

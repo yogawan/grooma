@@ -11,13 +11,56 @@ import {
 } from "@/lib/midtrans";
 import { connectDB } from "@/lib/mongodb";
 import { escapeRegex, extractRefId } from "@/lib/utils";
+import BranchModel from "@/models/Branch";
 import PaymentModel from "@/models/Payment";
 import TransactionModel from "@/models/Transaction";
+import UserModel from "@/models/User";
 
 interface TransactionForPayment {
   _id: unknown;
   transactionCode: string;
   total: number;
+}
+
+export type PaymentIntegrationMode = "MANAGED" | "SELF_RECORDED";
+
+// §9.6: the mode is configured on the HOST account that owns the branch, so
+// resolving it for a transaction means branch -> host -> mode.
+//
+// Falls back to MANAGED whenever that chain can't be followed — a branch
+// predating Branch.host, a host account since deleted, or a `host` pointing
+// at a non-HOST user. MANAGED is the pre-existing behavior (always charge
+// via Midtrans), so an unresolvable chain degrades to "what this code did
+// before the field existed" rather than silently marking money as received.
+export async function resolvePaymentIntegrationMode(
+  branch: { host?: unknown } | null,
+): Promise<PaymentIntegrationMode> {
+  if (!branch?.host) {
+    return "MANAGED";
+  }
+
+  await connectDB();
+  const host = await UserModel.findById(extractRefId(branch.host))
+    .select("role paymentIntegrationMode")
+    .lean();
+
+  if (!host || host.role !== "HOST") {
+    return "MANAGED";
+  }
+
+  return host.paymentIntegrationMode === "SELF_RECORDED"
+    ? "SELF_RECORDED"
+    : "MANAGED";
+}
+
+// Same resolution as above, starting from a branch id instead of an already
+// loaded branch document.
+export async function resolvePaymentIntegrationModeByBranchId(
+  branchId: string,
+): Promise<PaymentIntegrationMode> {
+  await connectDB();
+  const branch = await BranchModel.findById(branchId).select("host").lean();
+  return resolvePaymentIntegrationMode(branch);
 }
 
 // Each regeneration gets its own order id (suffixed -R2, -R3, ...) so
@@ -78,6 +121,20 @@ export async function createQrisPayment(
   if (transaction.paymentMethod !== "QRIS") {
     throw Errors.businessRule("Transaction payment method is not QRIS.");
   }
+
+  // §9.6: a SELF_RECORDED host collects via its own QRIS outside Grooma, so
+  // there is no Midtrans order to create here. Checked before the
+  // already-paid guard below, which such a transaction would also trip —
+  // but with a message that misleads about why.
+  const mode = await resolvePaymentIntegrationModeByBranchId(
+    extractRefId(transaction.branch),
+  );
+  if (mode === "SELF_RECORDED") {
+    throw Errors.businessRule(
+      "This host records QRIS payments outside Grooma; no payment order is created.",
+    );
+  }
+
   if (transaction.paymentStatus === "PAID") {
     throw Errors.conflict("Transaction is already paid.");
   }

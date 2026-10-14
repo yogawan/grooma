@@ -25,6 +25,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     throw zodErrorToAppError(parsed.error);
   }
 
-  const branch = await createBranch(parsed.data);
+  const branch = await createBranch(user, parsed.data);
   return successResponse({ branch }, 201);
 });

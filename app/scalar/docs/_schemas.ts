@@ -132,6 +132,15 @@ export const User = {
     address: { type: "string", nullable: true },
     photoUrl: { type: "string", nullable: true },
     status: { type: "string", enum: ["ACTIVE", "INACTIVE"] },
+    // §9.6: null for AGENT (and GROOMA_ADMIN) — the mode governs nothing on
+    // those roles, so serializeUser() reports null instead of a default that
+    // would read as meaningful. Read-only here; only
+    // PATCH /admin/hosts/{id}/payment-integration-mode writes it.
+    paymentIntegrationMode: {
+      type: "string",
+      nullable: true,
+      enum: ["MANAGED", "SELF_RECORDED", null],
+    },
     createdAt: { type: "string", format: "date-time" },
     updatedAt: { type: "string", format: "date-time" },
   },

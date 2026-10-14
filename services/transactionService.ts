@@ -9,7 +9,10 @@ import BranchModel from "@/models/Branch";
 import CustomerModel from "@/models/Customer";
 import ServiceModel from "@/models/Service";
 import TransactionModel from "@/models/Transaction";
-import { createQrisPaymentForTransaction } from "@/services/paymentService";
+import {
+  createQrisPaymentForTransaction,
+  resolvePaymentIntegrationMode,
+} from "@/services/paymentService";
 import type {
   CreateTransactionInput,
   ListTransactionsQuery,
@@ -90,6 +93,13 @@ export async function createTransaction(
 
   const isCash = input.paymentMethod === "CASH";
 
+  // §9.6: a SELF_RECORDED host's QRIS is its own, collected outside Grooma,
+  // so there is nothing to charge and nothing to wait for — the transaction
+  // is recorded as already paid, exactly like CASH. `paymentMethod` still
+  // says QRIS so reporting can tell the two apart (§12).
+  const mode = await resolvePaymentIntegrationMode(branch);
+  const recordAsPaid = isCash || mode === "SELF_RECORDED";
+
   const transaction = await TransactionModel.create({
     transactionCode,
     branch: branch._id,
@@ -103,17 +113,17 @@ export async function createTransaction(
       employeePercentage: service.revenueSharing.employeePercentage,
     },
     paymentMethod: input.paymentMethod,
-    paymentStatus: isCash ? "PAID" : "PENDING",
+    paymentStatus: recordAsPaid ? "PAID" : "PENDING",
     serviceHourType: input.serviceHourType,
     subtotal,
     discountAmount: input.discountAmount,
     total,
     ownerRevenue,
     employeeRevenue,
-    paidAt: isCash ? new Date() : undefined,
+    paidAt: recordAsPaid ? new Date() : undefined,
   });
 
-  if (isCash) {
+  if (recordAsPaid) {
     return { transaction, payment: null, paymentError: null };
   }
 

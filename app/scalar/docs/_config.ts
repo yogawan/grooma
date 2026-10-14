@@ -8,7 +8,7 @@ export const info = {
 export const servers = [
   { url: "http://localhost:3000", description: "Development server" },
   {
-    url: "https://grooma-core-service.vercel.app.vercel.app",
+    url: "https://grooma-core-service.vercel.app",
     description: "Production server (placeholder — update once deployed)",
   },
 ];

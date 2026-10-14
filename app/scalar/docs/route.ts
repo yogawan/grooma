@@ -1,40 +1,57 @@
 // @/app/scalar/docs/route.ts
+import { ApiReference } from "@scalar/nextjs-api-reference";
 import { notFound } from "next/navigation";
 import type { NextRequest } from "next/server";
+import { info, security, servers, tags } from "./_config";
+import { schemas, securitySchemes } from "./_schemas";
+import { adminPaths } from "./paths/admin";
+import { authPaths } from "./paths/auth";
+import { branchPaths } from "./paths/branches";
+import { customerPaths } from "./paths/customers";
+import { dashboardPaths } from "./paths/dashboard";
+import { internalPaths } from "./paths/internal";
+import { inventoryPaths } from "./paths/inventory";
+import { paymentPaths } from "./paths/payments";
+import { profilePaths } from "./paths/profile";
+import { servicePaths } from "./paths/services";
+import { subscriptionPaths } from "./paths/subscription";
+import { transactionChangeRequestPaths } from "./paths/transactionChangeRequests";
+import { transactionPaths } from "./paths/transactions";
+import { userPaths } from "./paths/users";
 
+const specHandler = ApiReference({
+  pageTitle: "Grooma API Documentation",
+  content: {
+    openapi: "3.1.0",
+    info,
+    servers,
+    security,
+    tags,
+    components: { securitySchemes, schemas },
+    paths: {
+      ...authPaths,
+      ...profilePaths,
+      ...branchPaths,
+      ...userPaths,
+      ...customerPaths,
+      ...servicePaths,
+      ...transactionPaths,
+      ...transactionChangeRequestPaths,
+      ...paymentPaths,
+      ...inventoryPaths,
+      ...dashboardPaths,
+      ...subscriptionPaths,
+      ...adminPaths,
+      ...internalPaths,
+    },
+  },
+});
+
+// Hide Scalar docs in production — manually maintained spec, not meant to
+// be a public-facing surface.
 export const GET = async (_request: NextRequest) => {
-  // Hide Scalar docs in production
-  if (process.env.NODE_ENV === "production") {
+  if (process.env.APPLICATION_ENVIRONMENT === "production") {
     notFound();
   }
-  return new Response(
-    `<!DOCTYPE html>
-<html>
-  <head>
-    <title>Grooma API Documentation</title>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@scalar/themes@latest/style.css" />
-    <style>
-      body {
-        margin: 0;
-        padding: 0;
-      }
-    </style>
-  </head>
-  <body>
-    <script
-      id="api-reference"
-      data-url="/api/openapi.json"
-      src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@latest/dist/index.js">
-    </script>
-  </body>
-</html>`,
-    {
-      status: 200,
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-      },
-    },
-  );
+  return specHandler();
 };

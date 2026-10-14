@@ -12,6 +12,7 @@
     "test:ui": "vitest --ui"
   },
   "dependencies": {
+    "@scalar/nextjs-api-reference": "^0.12.10",
     "argon2": "^0.45.1",
     "midtrans-client": "^1.4.3",
     "mongoose": "^9.11.2",

@@ -69,7 +69,7 @@ Scheduler untuk siklus billing subscription (PRD §23.2) belum punya pilihan tet
 - `MIDTRANS_SERVER_KEY`
 - `MIDTRANS_CLIENT_KEY`
 - `MIDTRANS_IS_PRODUCTION`
-- `NODE_ENV`
+- `APPLICATION_ENVIRONMENT` — must be set explicitly to "production" in production deployments (not auto-set like `NODE_ENV`)
 - `INTERNAL_CRON_SECRET` — autentikasi endpoint `POST /api/v1/internal/subscriptions/run-billing-cycle` (PRD §23.5), bukan session user
 
 Simpan di `.env.local` (sudah di-gitignore lewat pola `.env*`), buat juga `.env.example` tanpa nilai asli supaya onboarding jelas. Jangan commit credential (§9.3, §15.11).

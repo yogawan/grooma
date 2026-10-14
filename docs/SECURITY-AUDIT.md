@@ -27,7 +27,7 @@ Systematic review against PRD §15 (Security considerations). Status: IN PROGRES
 **Requirement:** All traffic over HTTPS
 
 **Status:**
-- ✓ Session cookie `secure` flag set conditionally: `process.env.NODE_ENV === "production"`
+- ✓ Session cookie `secure` flag set conditionally: `process.env.APPLICATION_ENVIRONMENT === "production"`
 - ✓ Next.js deployment on Vercel/similar enforces HTTPS by default
 - ✓ TODO at deployment: Configure hosting to force HTTPS redirects
 
@@ -212,7 +212,7 @@ Systematic review against PRD §15 (Security considerations). Status: IN PROGRES
 - ✓ `.env.local`: Created with real Midtrans sandbox credentials, SESSION_SECRET random, MONGODB_URI placeholder
 - ✓ `.env.example`: Template without real values
 - ✓ `next.config.ts`: Reads from `process.env` directly, no hardcoded fallbacks
-- ✓ Session cookie `secure` flag: Conditional on NODE_ENV
+- ✓ Session cookie `secure` flag: Conditional on APPLICATION_ENVIRONMENT (must be set explicitly in production — not auto-set like NODE_ENV)
 - ✓ Midtrans: `isProduction` flag from env var, routes to sandbox/production URL accordingly
 - ✓ No secrets committed to git (bun.lock, package.json never contain keys)
 

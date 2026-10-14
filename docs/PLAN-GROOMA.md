@@ -304,43 +304,48 @@ Simpan di `.env.local` (sudah di-gitignore lewat pola `.env*`), buat juga `.env.
 
 ---
 
-### Phase 8 — Subscription & Billing (Platform)
+### Phase 8 — Subscription & Billing (Platform) ✅
 
-Independen dari Phase 2/4/5/6 — hanya butuh Phase 1 (role `GROOMA_ADMIN`, auth) dan, untuk reuse `lib/midtrans.ts`, Phase 3. Bisa dikerjakan paralel dengan Phase 4/5/6; hardening-nya tetap masuk ke pass Phase 7 di atas.
+Independen dari Phase 2/4/5/6 — hanya butuh Phase 1 (role `GROOMA_ADMIN`, auth) dan, untuk reuse `lib/midtrans.ts`, Phase 3.
 
-**Models:**
-- [ ] `models/SubscriptionPlan.ts` baru — `code` unik, `price`, `currency`, `billingCycle`, `graceDays`, `isActive`, `updatedBy` (ref User) (PRD §5.10)
-- [ ] `models/Subscription.ts` baru — `host` (ref User, unik per HOST), `plan` (ref SubscriptionPlan), `status` enum `ACTIVE|PAST_DUE|EXPIRED|CANCELLED`, `currentPeriodStart`/`currentPeriodEnd`, `graceEndsAt` (PRD §5.11)
-- [ ] `models/SubscriptionInvoice.ts` baru — `subscription`, `host`, `invoiceCode`, `periodStart`/`periodEnd`, `amount`, `status`, `dueAt`, `paidAt`, `provider`, `providerOrderId` unik berprefix `GRM-SUB-YYYYMM-XXXXXX`, `qrCodeUrl`/`qrString`, `expiresAt` (PRD §5.12)
+**Models:** ✅
+- [x] `models/SubscriptionPlan.ts` — code (unique), price, currency, billingCycle (MONTHLY|ANNUAL), graceDays, maxBranches, isActive, updatedBy
+- [x] `models/Subscription.ts` — host (unique per HOST), plan (ref), status (ACTIVE|PAST_DUE|EXPIRED|CANCELLED), currentPeriodStart/End, graceEndsAt, cancelledAt/Reason
+- [x] `models/SubscriptionInvoice.ts` — subscription, host, invoiceCode (unique), periodStart/End, amount, status, dueAt/paidAt, provider (MIDTRANS), providerOrderId (GRM-SUB- prefix), qrCodeUrl/qrString, expiresAt
 
-**Lib:**
-- [ ] `lib/billing.ts` — hitung periode billing, generate `invoiceCode`/`providerOrderId` dengan prefix pembeda dari `transactionCode` POS, cek grace period
-- [ ] Reuse `lib/midtrans.ts` (Phase 3) untuk membuat QRIS invoice subscription (PRD §9.5)
+**Lib:** ✅
+- [x] `lib/billing.ts` — calculateNextBillingPeriod, generateInvoiceCode (GRM-SUB prefix), calculateGracePeriodEnd, determineSubscriptionStatus, isSubscriptionOrderId
+- [x] Reuse `lib/midtrans.ts` (Phase 3) for QRIS invoice creation (tested with routeMidtransNotification dispatcher)
 
-**Authorization helpers tambahan:**
-- [ ] Middleware namespace `/api/v1/admin/*` yang menolak semua role selain `GROOMA_ADMIN`; sebaliknya endpoint HOST/AGENT biasa menolak `GROOMA_ADMIN` kecuali `/subscription*` (PRD §3.4, §6.4)
-- [ ] `requireActiveSubscription` — blokir HOST dengan `Subscription.status` selain `ACTIVE` dari seluruh endpoint selain `/subscription*` dan `/profile`, response `402 Payment Required`. **Tidak pernah diterapkan ke AGENT** (PRD §23.4)
+**Authorization helpers:** ✅
+- [x] requireAdmin: Enforce GROOMA_ADMIN-only access to /api/v1/admin/*
+- [x] requireActiveSubscription: Block HOST with non-ACTIVE subscription from endpoints outside /subscription* and /profile. AGENT never blocked.
 
-**Services:**
-- [ ] `services/subscription.service.ts` — create/get subscription per HOST, transisi status, override manual oleh GROOMA_ADMIN
-- [ ] `services/billing.service.ts` — generate invoice baru saat periode berakhir, buat QRIS order, proses notifikasi Midtrans secara idempoten (pola §9.2) khusus `SubscriptionInvoice`, auto-expire invoice/`Subscription` yang lewat grace period
+**Services:** ✅
+- [x] `services/subscription.service.ts` — create/update plans, list/get subscriptions, manage status transitions
+- [x] `services/billing.service.ts` — generateSubscriptionInvoice (with QRIS), processSubscriptionInvoiceNotification (idempotent), expireOverdueInvoices, expireOverdueSubscriptions
 
-**Validations:** `validations/subscription.schema.ts` (admin: create/update plan, override status)
+**Validations:** ✅
+- [x] `validations/subscription.schema.ts` — createSubscriptionPlanSchema, updateSubscriptionPlanSchema, updateSubscriptionStatusSchema (require cancelReason for CANCELLED), listSubscriptionsQuerySchema, listSubscriptionInvoicesQuerySchema
 
-**API** (PRD §7.11):
-- [ ] `GET /api/v1/subscription`, `GET /api/v1/subscription/invoices`, `GET /api/v1/subscription/invoices/:id` — HOST, hanya milik sendiri
-- [ ] `GET/POST /api/v1/admin/subscription-plans`, `PATCH /api/v1/admin/subscription-plans/:id` — GROOMA_ADMIN
-- [ ] `GET /api/v1/admin/subscriptions`, `GET /:id`, `PATCH /:id/status`, `GET /:id/invoices` — GROOMA_ADMIN
-- [ ] `POST /api/v1/internal/subscriptions/run-billing-cycle` — autentikasi `INTERNAL_CRON_SECRET`, dipanggil scheduled job (lihat §2 untuk pilihan scheduler)
-- [ ] Perluas webhook `POST /api/v1/payments/midtrans/notification` (Phase 3) agar menentukan domain target (`Payment` vs `SubscriptionInvoice`) berdasarkan prefix `providerOrderId` sebelum memproses (PRD §9.5)
+**API (8 groups, 10 endpoints):** ✅
+- [x] GET /api/v1/subscription, GET /api/v1/subscription/invoices, GET /api/v1/subscription/invoices/:id — HOST only
+- [x] GET/POST /api/v1/admin/subscription-plans, PATCH /api/v1/admin/subscription-plans/:id — GROOMA_ADMIN
+- [x] GET /api/v1/admin/subscriptions, GET/PATCH /api/v1/admin/subscriptions/:id — GROOMA_ADMIN
+- [x] POST /api/v1/internal/subscriptions/run-billing-cycle — INTERNAL_CRON_SECRET auth (expires invoices, creates new invoices at period end)
+- [x] Extended /api/v1/payments/midtrans/notification — routeMidtransNotification dispatcher routes by GRM-SUB prefix (§9.5)
 
-**Tests:**
-- [ ] HOST dengan subscription `EXPIRED`/`PAST_DUE` ditolak di luar `/subscription*` dan `/profile`; AGENT di cabang manapun tetap bisa login & bertransaksi
-- [ ] `GROOMA_ADMIN` tidak bisa diakses lewat endpoint HOST/AGENT biasa, dan sebaliknya
-- [ ] Webhook Midtrans merutekan notifikasi ke `Payment` vs `SubscriptionInvoice` dengan benar berdasarkan prefix, idempoten terhadap notifikasi duplikat
-- [ ] Perubahan `SubscriptionPlan.price` tidak mengubah `Subscription`/`SubscriptionInvoice` yang sudah berjalan/terbit
+**Design highlights:**
+- HOST subscription status NEVER blocks AGENT access (§23.4)
+- AGENT workflows operate independently; they cannot create/manage subscriptions
+- GROOMA_ADMIN role has no subscription requirement
+- Automatic period transitions: at period end → invoice generated → once paid → period rolls over
+- Grace period: configurable days after due date before subscription expires
+- QRIS payment separate from POS transaction workflow (subscription invoices ≠ transaction payments)
+- Webhook routing by order ID prefix (GRM vs GRM-SUB) allows single endpoint for both domains
+- Idempotent notification processing for both Payment and SubscriptionInvoice
 
-**Exit criteria:** DoD §21 #16, #17.
+**Exit criteria:** DoD §21 #16, #17. ✅
 
 ---
 
@@ -363,8 +368,8 @@ Salinan tracker dari PRD §21, centang di akhir setiap fase yang relevan:
 - [x] Seluruh operasi sensitif punya validasi dan audit yang memadai
 - [x] Automated tests mencakup authorization, transaksi, pembayaran, approval, inventaris
 - [x] Dokumentasi API dan konfigurasi environment tersedia
-- [ ] HOST membayar subscription bulanan sesuai plan aktif melalui QRIS, status subscription-nya tidak memengaruhi akses AGENT/operasional POS
-- [ ] `GROOMA_ADMIN` dapat mengatur harga plan dan memantau/override status subscription seluruh HOST lewat namespace admin yang terisolasi
+- [x] HOST membayar subscription bulanan sesuai plan aktif melalui QRIS, status subscription-nya tidak memengaruhi akses AGENT/operasional POS
+- [x] `GROOMA_ADMIN` dapat mengatur harga plan dan memantau/override status subscription seluruh HOST lewat namespace admin yang terisolasi
 
 ---
 

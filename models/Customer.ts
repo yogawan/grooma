@@ -71,11 +71,10 @@ const CustomerSchema = new Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
 CustomerSchema.index({ phone: 1 });
 CustomerSchema.index({ name: 1 });
 
-export default models.Customer ||
-  model("Customer", CustomerSchema);
+export default models.Customer || model("Customer", CustomerSchema);

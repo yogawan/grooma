@@ -24,13 +24,7 @@ const AttendanceSchema = new Schema(
 
     status: {
       type: String,
-      enum: [
-        "PRESENT",
-        "LATE",
-        "ABSENT",
-        "LEAVE",
-        "SICK",
-      ],
+      enum: ["PRESENT", "LATE", "ABSENT", "LEAVE", "SICK"],
       default: "PRESENT",
     },
 
@@ -48,13 +42,9 @@ const AttendanceSchema = new Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
-AttendanceSchema.index(
-  { employee: 1, attendanceDate: 1 },
-  { unique: true }
-);
+AttendanceSchema.index({ employee: 1, attendanceDate: 1 }, { unique: true });
 
-export default models.Attendance ||
-  model("Attendance", AttendanceSchema);
+export default models.Attendance || model("Attendance", AttendanceSchema);

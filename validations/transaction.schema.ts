@@ -7,8 +7,8 @@ import { z } from "zod";
 // instead of a silently-ignored no-op.
 export const createTransactionSchema = z
   .object({
-    customerId: z.string().min(1).optional(),
-    serviceId: z.string().min(1),
+    customerId: z.string().trim().min(1).optional(),
+    serviceId: z.string().trim().min(1),
     paymentMethod: z.enum(["CASH", "QRIS"]),
     discountAmount: z.number().nonnegative().optional().default(0),
     serviceHourType: z

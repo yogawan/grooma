@@ -64,33 +64,28 @@ const ServiceSchema = new Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
 ServiceSchema.pre("validate", function () {
   const revenueSharing = this.revenueSharing;
 
   if (!revenueSharing) {
-    this.invalidate(
-      "revenueSharing",
-      "Revenue sharing is required."
-    );
+    this.invalidate("revenueSharing", "Revenue sharing is required.");
     return;
   }
 
   const total =
-    revenueSharing.ownerPercentage +
-    revenueSharing.employeePercentage;
+    revenueSharing.ownerPercentage + revenueSharing.employeePercentage;
 
   if (total !== 100) {
     this.invalidate(
       "revenueSharing",
-      "Owner and employee percentages must total 100%."
+      "Owner and employee percentages must total 100%.",
     );
   }
 });
 
 ServiceSchema.index({ name: 1, isActive: 1 });
 
-export default models.Service ||
-  model("Service", ServiceSchema);
+export default models.Service || model("Service", ServiceSchema);

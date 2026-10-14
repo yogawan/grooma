@@ -58,7 +58,7 @@ export function zodErrorToAppError(error: z.ZodError): AppError {
   return new AppError("VALIDATION_ERROR", message, 400);
 }
 
-function mongooseValidationErrorToAppError(
+export function mongooseValidationErrorToAppError(
   error: mongoose.Error.ValidationError,
 ): AppError {
   const message = Object.entries(error.errors)
@@ -82,7 +82,12 @@ function isDuplicateKeyError(error: unknown): error is DuplicateKeyError {
   );
 }
 
-function duplicateKeyErrorToAppError(error: DuplicateKeyError): AppError {
+export function duplicateKeyErrorToAppError(
+  error: DuplicateKeyError,
+): AppError | null {
+  if (!isDuplicateKeyError(error)) {
+    return null;
+  }
   const field = error.keyValue ? Object.keys(error.keyValue)[0] : undefined;
   const message = field
     ? `${field} already exists.`

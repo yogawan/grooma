@@ -32,7 +32,7 @@ export function computeServicePricing(
   );
   const employeeRevenue = total - ownerRevenue;
 
-  return { subtotal, total, ownerRevenue, employeeRevenue };
+  return { subtotal, discountAmount, total, ownerRevenue, employeeRevenue };
 }
 
 export function escapeRegex(value: string): string {

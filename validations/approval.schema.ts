@@ -7,7 +7,7 @@ import { z } from "zod";
 // their own dedicated mechanisms: complete/cancel and the Midtrans
 // webhook). customerId is nullable so a request can correct "no customer
 // recorded" in either direction.
-const requestedChangesSchema = z
+export const requestedChangesSchema = z
   .object({
     serviceId: z.string().min(1).optional(),
     customerId: z.string().min(1).nullable().optional(),

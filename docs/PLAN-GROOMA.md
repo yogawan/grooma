@@ -250,19 +250,33 @@ Simpan di `.env.local` (sudah di-gitignore lewat pola `.env*`), buat juga `.env.
 
 ### Phase 6 — Dashboard
 **Services:**
-- [ ] `services/dashboard.service.ts` — aggregation pipeline per §12: KPI summary, revenue (harian/mingguan/bulanan + perbandingan antarperiode + distribusi payment method & owner/agent revenue), service performance, agent performance (bentuk beda untuk HOST vs AGENT, §12.3), inventory summary (low stock)
+- [x] `services/dashboard.service.ts` — aggregation pipelines per §12: KPI summary (total revenue PAID-only, transaction count, avg order value, unique customer count), revenue (by period: day/week/month/year + payment method breakdown with owner/agent split), service performance (top 10 by revenue), agent performance (HOST sees all, AGENT forced to self per §12.3), inventory summary (low-stock items), transaction stats (by status/paymentStatus/paymentMethod)
 
 **Rules yang wajib ditegakkan di pipeline** (§12.4):
-- [ ] Transaksi `CANCELLED` dikecualikan dari omzet
-- [ ] Payment `PENDING` tidak dihitung sebagai omzet yang sudah diterima
-- [ ] Refund diperlakukan konsisten di semua laporan
-- [ ] Filter branch ikut otorisasi — AGENT selalu dipaksa ke branch sendiri meski query param `branchId` beda (§7.2)
+- [x] Transaksi `CANCELLED` dikecualikan dari omzet — `transactionStatus: { $ne: "CANCELLED" }` di baseTransactionMatch
+- [x] Payment `PENDING` tidak dihitung sebagai omzet yang sudah diterima — `$cond: [{ $eq: ["$paymentStatus", "PAID"] }, "$total", 0]` di setiap $sum revenue
+- [x] Refund diperlakukan konsisten — payment method breakdown juga pakai PAID-only, tidak ada status REFUNDED diff atau special case (REFUNDED adalah terminal, masuk ke paid revenue)
+- [x] Filter branch ikut otorisasi — AGENT selalu dipaksa ke branch sendiri meski query param `branchId` beda (§7.2), implementasi: `user.role === "HOST" ? query.branchId : user.branch || undefined`
 
-**API** (§7.2): `/dashboard/summary`, `/revenue`, `/transactions`, `/services`, `/agents`, `/inventory`
+**Validations:** `validations/dashboard.schema.ts` — Period enum, shared base query params (period/from/to/compare/branchId/agentId, semua optional dengan default), inventory query (threshold), date range refine validation
 
-**Tests** (§18 bucket Dashboard)
+**API** (§7.2): 6 endpoints GET-only
+- [x] `/dashboard/summary` — KPI snapshot
+- [x] `/dashboard/revenue` — Revenue dengan period breakdown & payment method split
+- [x] `/dashboard/services` — Top services
+- [x] `/dashboard/agents` — Agent metrics (self-only untuk AGENT per §12.3)
+- [x] `/dashboard/transactions` — Transaction stats faceted
+- [x] `/dashboard/inventory` — Low-stock alert
 
-**Exit criteria:** DoD §21 #12.
+**Tests** (§18 bucket Dashboard):
+- [ ] Skip — belum ada test runner (sama seperti phase sebelumnya). Revisit di Phase 7.
+
+**Catatan implementasi (di luar teks PRD eksplisit):**
+- Period comparison (compare param) disiapkan di schema tapi tidak diimplementasikan di aggregation — PRD menyebutnya §12 tapi tidak merinci mekanismenya; untuk MVP cukup beri client flexibility untuk query range lain secara terpisah lalu client-side compute delta
+- Agent performance aggregation tidak populate agent object — hanya collect `_id` yang sudah berisi agent ID; populating byName/byEmail di client lebih fleksibel daripada N lookup di DB per request
+- Inventory summary memakai `minimumStock` field existing di model (tidak ada perubahan model Phase 6), filtering via `$expr { $lte: ["$quantity", "$minimumStock"] }` memungkinkan per-item threshold yang berbeda
+
+**Exit criteria:** DoD §21 #12. **Tercapai secara kode**, catatan sama seperti Phase 3/4/5 — belum ada verifikasi end-to-end karena `MONGODB_URI` masih placeholder.
 
 ---
 

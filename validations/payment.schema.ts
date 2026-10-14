@@ -7,7 +7,12 @@ import { z } from "zod";
 // one, not an exhaustive contract.
 export const createQrisPaymentSchema = z
   .object({
-    transactionId: z.string().min(1),
+    transactionId: z
+      .string()
+      .trim()
+      .min(24)
+      .max(24)
+      .regex(/^[0-9a-f]{24}$/i, "Invalid ObjectId format"),
   })
   .strict();
 export type CreateQrisPaymentInput = z.infer<typeof createQrisPaymentSchema>;

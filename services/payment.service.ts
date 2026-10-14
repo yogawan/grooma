@@ -278,3 +278,38 @@ export async function processMidtransNotification(
 
   return { applied: true, reason: "status_updated" };
 }
+
+// §9.5: Route Midtrans notification to Payment or SubscriptionInvoice
+// handler based on providerOrderId prefix
+export async function routeMidtransNotification(
+  rawBody: unknown,
+): Promise<NotificationResult> {
+  if (!isNotificationPayload(rawBody)) {
+    throw Errors.validation("Malformed Midtrans notification payload.");
+  }
+
+  const orderId = rawBody.order_id;
+
+  // Check prefix to determine which service to route to
+  if (orderId.startsWith("GRM-SUB")) {
+    // SubscriptionInvoice notification — route to billing service
+    const { processSubscriptionInvoiceNotification } = await import(
+      "./billing.service"
+    );
+    try {
+      await processSubscriptionInvoiceNotification(orderId);
+      return { applied: true, reason: "status_updated" };
+    } catch (error) {
+      if (error instanceof Error && error.message === "NOT_FOUND") {
+        logger.warn("Midtrans notification for unknown subscription invoice", {
+          orderId,
+        });
+        return { applied: false, reason: "unknown_order" };
+      }
+      throw error;
+    }
+  } else {
+    // POS Transaction payment notification — use existing handler
+    return processMidtransNotification(rawBody);
+  }
+}

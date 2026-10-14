@@ -44,7 +44,9 @@ interface ReconciliationResult {
 const args = process.argv.slice(2);
 const shouldFix = args.includes("--fix");
 const limitArg = args.find((a) => a.startsWith("--limit"));
-const limit = limitArg ? Number(limitArg.split("=")[1] || args[args.indexOf(limitArg) + 1]) : 100;
+const limit = limitArg
+  ? Number(limitArg.split("=")[1] || args[args.indexOf(limitArg) + 1])
+  : 100;
 const statusFilter = args.find((a) => a.startsWith("--status"));
 const filterStatus = statusFilter ? statusFilter.split("=")[1] : undefined;
 
@@ -52,9 +54,7 @@ async function reconcilePayments(): Promise<ReconciliationResult> {
   await connectDB();
 
   console.log(`\n🔄 Payment Reconciliation Started`);
-  console.log(
-    `   Mode: ${shouldFix ? "APPLY FIXES" : "DRY RUN (no changes)"}`,
-  );
+  console.log(`   Mode: ${shouldFix ? "APPLY FIXES" : "DRY RUN (no changes)"}`);
   console.log(`   Limit: ${limit} payments`);
   if (filterStatus) {
     console.log(`   Filter: status=${filterStatus}`);
@@ -99,8 +99,10 @@ async function reconcilePayments(): Promise<ReconciliationResult> {
         partial_refund: "REFUNDED",
       };
 
-      const remoteStatus = STATUS_MAP[midtransStatus.transactionStatus] ||
-        midtransStatus.transactionStatus || "UNKNOWN";
+      const remoteStatus =
+        STATUS_MAP[midtransStatus.transactionStatus] ||
+        midtransStatus.transactionStatus ||
+        "UNKNOWN";
 
       if (payment.status === remoteStatus) {
         result.matched++;
@@ -154,9 +156,7 @@ async function main() {
       console.table(result.discrepancies);
 
       if (!shouldFix) {
-        console.log(
-          "\n💡 Tip: Run with --fix flag to apply corrections:",
-        );
+        console.log("\n💡 Tip: Run with --fix flag to apply corrections:");
         console.log("   bun scripts/reconcile-payments.ts --fix\n");
       } else {
         console.log(`\n✅ Fixed ${result.mismatched} discrepancies\n`);

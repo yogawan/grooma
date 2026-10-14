@@ -1,7 +1,9 @@
 // @/scripts/seedUser.ts
 //
-// Shared seeding logic for scripts/seedAdmin.ts and scripts/seedHost.ts.
-// Not runnable on its own — import it.
+// Seeding logic behind scripts/seedHost.ts. Not runnable on its own — import
+// it. It kept a role option back when scripts/seedAdmin.ts was the second
+// caller; that script moved to the admin backend along with GROOMA_ADMIN, so
+// HOST is now the only role this service can seed.
 //
 // Credentials come from environment variables with no hardcoded fallback:
 // Grooma runs one deployment per HOST (PRD §3.5), so a baked-in default
@@ -14,7 +16,7 @@ import { connectDB } from "@/lib/mongodb";
 import UserModel from "@/models/User";
 
 export interface SeedUserOptions {
-  role: "GROOMA_ADMIN" | "HOST";
+  role: "HOST";
   usernameEnv: string;
   passwordEnv: string;
   nameEnv: string;
@@ -78,19 +80,20 @@ export async function seedUser(options: SeedUserOptions): Promise<void> {
   // would not break isolation — they would simply share all operational data
   // — but it contradicts the deployment model and each HOST is billed its
   // own subscription, so make it an explicit refusal rather than a surprise.
-  if (options.role === "HOST") {
-    const existingHost = await UserModel.findOne({ role: "HOST" })
-      .select("username")
-      .lean();
+  // Unconditional now that HOST is the only seedable role — this used to be
+  // guarded by `if (options.role === "HOST")` so the admin seeder could skip
+  // it.
+  const existingHost = await UserModel.findOne({ role: "HOST" })
+    .select("username")
+    .lean();
 
-    if (existingHost) {
-      throw new Error(
-        `This deployment already has a HOST account ("${existingHost.username}"). ` +
-          "One deployment serves one HOST (PRD §3.5) — provision a separate " +
-          "deployment and database for another business, or create additional " +
-          "staff through POST /users as that HOST.",
-      );
-    }
+  if (existingHost) {
+    throw new Error(
+      `This deployment already has a HOST account ("${existingHost.username}"). ` +
+        "One deployment serves one HOST (PRD §3.5) — provision a separate " +
+        "deployment and database for another business, or create additional " +
+        "staff through POST /users as that HOST.",
+    );
   }
 
   const created = await UserModel.create({

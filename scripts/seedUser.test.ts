@@ -151,21 +151,7 @@ describe("seedUser single-HOST guard (L-6)", () => {
     expect(users[0]?.password).toBe("hashed:original");
   });
 
-  it("does not block seeding a GROOMA_ADMIN alongside the HOST", async () => {
-    users = [{ username: "owner", password: "x", name: "Owner", role: "HOST" }];
-    process.env.SEED_ADMIN_USERNAME = "admin";
-    process.env.SEED_ADMIN_PASSWORD = "password123";
-    process.env.SEED_ADMIN_NAME = "Admin";
-
-    await expect(
-      seedUser({
-        role: "GROOMA_ADMIN",
-        usernameEnv: "SEED_ADMIN_USERNAME",
-        passwordEnv: "SEED_ADMIN_PASSWORD",
-        nameEnv: "SEED_ADMIN_NAME",
-      }),
-    ).resolves.toBeUndefined();
-
-    expect(users.map((u) => u.role)).toEqual(["HOST", "GROOMA_ADMIN"]);
-  });
+  // A case here used to assert the guard did not fire when seeding a
+  // GROOMA_ADMIN alongside the HOST. That role is seeded by the admin backend
+  // now, so the guard is unconditional and there is no second role to exempt.
 });

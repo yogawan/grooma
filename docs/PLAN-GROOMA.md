@@ -24,8 +24,9 @@ Repo saat ini adalah hasil `create-next-app` + beberapa model Mongoose yang suda
 | `app/api/v1/*` | seluruh endpoint §7 | **Tidak ada** sama sekali, hanya default page bawaan `create-next-app` | Bangun bertahap mulai Phase 1 |
 | `lib/`, `services/`, `validations/`, `types/` | struktur §17 | Tidak ada | Bangun bertahap sesuai phase |
 | `models/SubscriptionPlan.ts`, `Subscription.ts`, `SubscriptionInvoice.ts` | wajib untuk modul Subscription & Billing (PRD §5.10–§5.12, §23) | Tidak ada | Buat baru — Phase 8 |
-| `User.role` enum | harus memuat `GROOMA_ADMIN` (PRD §3.1, §5.1) | Hanya `HOST \| AGENT` | Tambahkan — Phase 1 (bareng perbaikan field `branch`) |
-| `app/api/v1/admin/*`, `app/api/v1/subscription/*` | namespace baru untuk GROOMA_ADMIN & billing HOST (PRD §6.4, §7.11) | Tidak ada | Bangun — Phase 8 |
+| `User.role` enum | hanya `HOST \| AGENT` (PRD §3.6) | Sudah sesuai | **Selesai.** Sempat memuat `GROOMA_ADMIN` di Phase 8, lalu dikembalikan ke dua role ketika role admin dipisah ke backend tersendiri |
+| `app/api/v1/subscription/*` | namespace billing milik HOST sendiri (PRD §7.11) | Ada | Selesai — Phase 8 |
+| `app/api/v1/admin/*` | ~~namespace GROOMA_ADMIN~~ — **dipindahkan ke backend admin terpisah** (PRD §3.6) | Tidak ada di backend ini | Jangan dibangun kembali di sini |
 
 Catatan tambahan: `AGENTS.md` menandai bahwa versi Next.js di proyek ini punya breaking changes dari training data model mana pun — sebelum menulis route handler, baca `node_modules/next/dist/docs/` untuk konvensi App Router/Route Handler yang berlaku di versi ini. Hal yang sama berlaku untuk Mongoose (`^9.11.2`, lebih baru dari API yang umum dikenal).
 
@@ -123,14 +124,14 @@ Simpan di `.env.local` (sudah di-gitignore lewat pola `.env*`), buat juga `.env.
 ### Phase 2 — Master Data
 **Services:**
 - [x] `services/branch.service.ts`
-- [x] `services/user.service.ts` — hash password saat create, jangan pernah expose hash (§7.3) — juga strip `compensation` dari response (tidak ada di field list PRD §3.1) dan exclude role `GROOMA_ADMIN` dari semua query (§3.4)
+- [x] `services/user.service.ts` — hash password saat create, jangan pernah expose hash (§7.3) — juga strip `compensation` dari response (tidak ada di field list PRD §3.1) dan exclude role platform dari semua query (§3.4). *Kini berupa allowlist positif `HOST`/`AGENT`, bukan pengecualian `GROOMA_ADMIN` — lihat PRD §3.6 poin 2 untuk alasannya.*
 - [x] `services/customer.service.ts` — pencarian/dedupe nomor telepon ternormalisasi, bukan exact-string match (§5.3); dedupe-by-phone-variant di create mengembalikan customer yang sudah ada alih-alih membuat duplikat
 - [x] `services/service.service.ts` — validasi `revenueSharing` total 100% (sudah ada di model); surfaced dengan jelas via `lib/errors.ts` yang sekarang memformat `mongoose.Error.ValidationError` ke 400 konsisten (juga dipakai `User`/`Branch` save)
 
 **Validations:** `validations/branch.schema.ts`, `user.schema.ts` (+ `updateProfileSchema`), `customer.schema.ts`, `service.schema.ts` — seluruhnya `.strict()` supaya field terlarang (role/branch di profil, `customerType`/`loyaltyPoints` di customer, kode identifier di update) ditolak eksplisit, bukan cuma diabaikan diam-diam
 
 **API** (§7.3–§7.6): seluruh endpoint Branch, User, Customer, Service, Profile.
-- [x] `GET/PATCH /api/v1/profile` — **wajib menolak** field `role`/`branch` dari body (§13); perubahan role/branch hanya lewat User Management oleh HOST. Dibuka untuk HOST/AGENT/GROOMA_ADMIN (§3.2 matrix — "own profile only" berlaku ke ketiganya)
+- [x] `GET/PATCH /api/v1/profile` — **wajib menolak** field `role`/`branch` dari body (§13); perubahan role/branch hanya lewat User Management oleh HOST. Dibuka untuk HOST/AGENT (§3.2 matrix — "own profile only"). *Dulu juga mencakup GROOMA_ADMIN; role itu tidak bisa lagi memperoleh session di backend ini (PRD §3.6).*
 - [x] `PATCH /api/v1/users/:id` dan `/status` — hanya HOST
 - [x] Endpoint Customer: AGENT boleh create saat transaksi butuh customer baru (§7.5), tapi field yang dikembalikan ke AGENT dibatasi sesuai kebutuhan operasional (§5.3, §7.5 privasi data pribadi) — HOST lihat semua field, AGENT hanya field operasional (nama/telepon/tipe/poin/kunjungan terakhir/status)
 
@@ -306,7 +307,11 @@ Simpan di `.env.local` (sudah di-gitignore lewat pola `.env*`), buat juga `.env.
 
 ### Phase 8 — Subscription & Billing (Platform) ✅
 
-Independen dari Phase 2/4/5/6 — hanya butuh Phase 1 (role `GROOMA_ADMIN`, auth) dan, untuk reuse `lib/midtrans.ts`, Phase 3.
+> **Sebagian isi phase ini sudah dipindahkan keluar dari backend ini (PRD §3.6).** Checklist di bawah dibiarkan tercentang karena pekerjaannya memang pernah selesai di repo ini — bukan deskripsi keadaan sekarang. Yang **sudah tidak ada di sini**: role `GROOMA_ADMIN` pada enum/tipe session, `requireAdmin`, namespace `/api/v1/admin/*`, CRUD `SubscriptionPlan`, daftar subscription lintas-HOST, override manual status, dan `scripts/seedAdmin.ts`. Semuanya kini milik backend admin terpisah yang memakai database yang sama.
+>
+> Yang **tetap** di backend ini: ketiga model subscription, siklus billing terjadwal, pembayaran invoice via Midtrans QRIS, penegakan akses saat subscription tidak aktif, dan permukaan `/subscription*` milik HOST sendiri.
+
+Independen dari Phase 2/4/5/6 — hanya butuh Phase 1 (auth) dan, untuk reuse `lib/midtrans.ts`, Phase 3.
 
 **Models:** ✅
 - [x] `models/SubscriptionPlan.ts` — code (unique), price, currency, billingCycle (MONTHLY|ANNUAL), graceDays, maxBranches, isActive, updatedBy

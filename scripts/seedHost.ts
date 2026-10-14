@@ -6,8 +6,9 @@
  * Creates the initial HOST account for a freshly provisioned deployment
  * (PRD §3.5). This script is the ONLY way to get the first HOST in: POST
  * /users requires an already-authenticated HOST (app/api/v1/users/route.ts),
- * and GROOMA_ADMIN is blocked from that endpoint — so without this, a brand
- * new deployment has no HOST and no way to create one.
+ * so without this, a brand new deployment has no HOST and no way to create
+ * one. The admin backend cannot stand in for it either — it shares this
+ * database but deliberately has no route into the staff namespace.
  *
  * Every subsequent HOST/AGENT for that business is created normally through
  * POST /users by this account.

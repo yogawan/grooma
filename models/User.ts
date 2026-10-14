@@ -17,9 +17,14 @@ const UserSchema = new Schema(
       select: false,
     },
 
+    // Only the two roles this service owns. The admin backend sharing this
+    // database declares its own schema and is what writes GROOMA_ADMIN rows;
+    // this enum constrains writes from here, and Mongoose does not validate
+    // on read, so existing admin rows still load fine (they are turned away
+    // at the session boundary instead — see lib/auth.ts isServiceRole).
     role: {
       type: String,
-      enum: ["AGENT", "HOST", "GROOMA_ADMIN"],
+      enum: ["AGENT", "HOST"],
       required: true,
       default: "AGENT",
     },
@@ -90,10 +95,7 @@ UserSchema.pre("validate", function () {
   }
 
   if (this.role !== "AGENT" && this.branch) {
-    this.invalidate(
-      "branch",
-      "Branch must be null for HOST and GROOMA_ADMIN roles.",
-    );
+    this.invalidate("branch", "Branch must be null for HOST role.");
   }
 });
 

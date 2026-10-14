@@ -3,9 +3,11 @@
 
 **Product:** Grooma — Barbershop Management & POS System  
 **Document Type:** Backend PRD  
-**Version:** 1.1  
+**Version:** 1.2  
 **Status:** Ready for Development Planning  
-**Changelog:** v1.1 menambahkan modul Subscription & Billing (Platform) dan role `GROOMA_ADMIN` — lihat §23.
+**Changelog:**
+- v1.2 memisahkan role `GROOMA_ADMIN` ke backend admin tersendiri dengan database yang sama; backend operasional kini hanya melayani `HOST` dan `AGENT`, dan namespace `/api/v1/admin/*` dihapus darinya — lihat §3.6. Ini sekaligus menyelesaikan implikasi arsitektur yang sebelumnya hanya dicatat di §23.1.
+- v1.1 menambahkan modul Subscription & Billing (Platform) dan role `GROOMA_ADMIN` — lihat §23.
 
 ---
 
@@ -72,11 +74,11 @@ Monolith ini di-deploy **satu instance per HOST**, masing-masing dengan database
 
 # 3. User Roles & Authorization
 
-Grooma menggunakan tiga role:
+Grooma menggunakan tiga role, tetapi **tidak seluruhnya di backend yang sama** (§3.6):
 
-- `HOST` — role operasional, mengelola bisnis barbershop lintas cabang.
-- `AGENT` — role operasional, mencatat transaksi pada satu cabang yang ditugaskan.
-- `GROOMA_ADMIN` — role platform internal (vendor Grooma), mengelola subscription/billing seluruh akun HOST. Tidak memiliki cabang dan tidak terlibat pada operasional POS (lihat §23).
+- `HOST` — role operasional, mengelola bisnis barbershop lintas cabang. *Backend operasional.*
+- `AGENT` — role operasional, mencatat transaksi pada satu cabang yang ditugaskan. *Backend operasional.*
+- `GROOMA_ADMIN` — role platform internal (vendor Grooma), mengelola subscription/billing seluruh akun HOST. Tidak memiliki cabang dan tidak terlibat pada operasional POS (lihat §23). **Berada di backend admin terpisah dengan database yang sama** — backend operasional tidak mengenal role ini (§3.6).
 
 Setiap pengguna HOST/AGENT memiliki identitas akun, role, dan penugasan cabang. `GROOMA_ADMIN` memiliki identitas akun dan role tanpa penugasan cabang.
 
@@ -116,19 +118,22 @@ Field utama:
 - Dapat melakukan CRUD inventaris cabangnya.
 - Dapat melihat profil dan dashboard.
 
-`GROOMA_ADMIN`
+`GROOMA_ADMIN` — *diimplementasikan di backend admin terpisah, bukan di backend operasional (§3.6)*
 - Tidak terasosiasi dengan cabang manapun (`branch` selalu `null`).
 - Tidak dapat mengakses data operasional POS milik HOST/AGENT (customer, transaksi, inventaris) kecuali untuk kebutuhan audit billing.
 - Dapat mengelola konfigurasi `SubscriptionPlan` (harga, status aktif).
 - Dapat melihat seluruh `Subscription` dan `SubscriptionInvoice` milik semua akun HOST.
 - Dapat melakukan override manual status subscription (misal setelah verifikasi pembayaran di luar sistem).
-- Akun `GROOMA_ADMIN` tidak dapat dibuat melalui endpoint publik atau endpoint User Management biasa; provisioning dilakukan secara internal/terbatas.
+- Akun `GROOMA_ADMIN` tidak dapat dibuat melalui endpoint publik atau endpoint User Management biasa; provisioning dilakukan oleh backend admin.
+- Tidak dapat login ke backend operasional sama sekali, meskipun akunnya berada di database yang sama (§3.6).
 
 ## 3.2. Authorization Matrix
 
+Kolom `GROOMA ADMIN` menjelaskan role tersebut **di backend admin terpisah** (§3.6). Di backend operasional, seluruh barisnya efektif `No` — role itu bahkan tidak dapat memperoleh session di sini.
+
 | Feature | HOST | AGENT | GROOMA ADMIN |
 |---|---|---|---|
-| Login | Yes | Yes | Yes (separate admin namespace) |
+| Login | Yes | Yes | Hanya ke backend admin; ditolak di backend operasional (§6.4) |
 | Dashboard | All branches | Assigned branch | No (has its own admin dashboard, not this one) |
 | View transactions | All branches | Assigned branch | No |
 | Create transaction | No | Yes | No |
@@ -139,8 +144,8 @@ Field utama:
 | Create inventory | Any branch | Assigned branch | No |
 | Update inventory | Any branch | Assigned branch | No |
 | Delete inventory | Any branch | Assigned branch | No |
-| View profile | Yes | Yes | Yes (own profile only) |
-| Update own profile | Yes | Yes | Yes (own profile only) |
+| View profile | Yes | Yes | Own profile only, lewat backend admin |
+| Update own profile | Yes | Yes | Own profile only, lewat backend admin |
 | Manage branches | Yes | No | No |
 | Manage users/employees | Yes | No | No |
 | Manage services | Yes | No | No |
@@ -148,9 +153,9 @@ Field utama:
 | Attendance | Deferred | Deferred | Deferred |
 | View own subscription & invoices | Yes | No | No |
 | Pay subscription invoice | Yes (via QRIS) | No | No |
-| Configure subscription plan/price | No | No | Yes |
-| View/manage all HOST subscriptions | No | No | Yes |
-| Manual override subscription status | No | No | Yes |
+| Configure subscription plan/price | No | No | Yes (backend admin) |
+| View/manage all HOST subscriptions | No | No | Yes (backend admin) |
+| Manual override subscription status | No | No | Yes (backend admin) |
 
 **Important:** HOST boleh mengajukan perubahan transaksi apabila diperlukan, tetapi persetujuan harus mengikuti kebijakan pemisahan tugas yang ditetapkan. Secara default, pengguna tidak boleh menyetujui pengajuan perubahan miliknya sendiri.
 
@@ -168,7 +173,7 @@ HOST dapat mengakses seluruh cabang, tetapi tetap harus menggunakan filter caban
 
 ## 3.4. Platform Role Isolation
 
-`GROOMA_ADMIN` beroperasi pada namespace API terpisah (`/api/v1/admin/*`) dengan middleware yang menolak role `HOST`/`AGENT`. Sebaliknya, endpoint HOST/AGENT biasa menolak role `GROOMA_ADMIN`, kecuali endpoint subscription milik HOST sendiri (`/subscription*`) yang memang untuk HOST, bukan untuk admin.
+Isolasi role platform kini dicapai lewat **pemisahan service**, bukan lewat namespace di dalam backend yang sama — lihat §3.6. Backend operasional tidak lagi memuat role `GROOMA_ADMIN` maupun namespace `/api/v1/admin/*`.
 
 `GROOMA_ADMIN` tidak tunduk pada branch-based authorization karena tidak memiliki cabang. Status subscription salah satu akun HOST tidak pernah memengaruhi kemampuan login atau akses AGENT pada cabang manapun — pembatasan hanya berlaku pada akun HOST yang bersangkutan (lihat §23.4).
 
@@ -194,6 +199,27 @@ Konsekuensi yang perlu dipahami sebelum menambah fitur apa pun:
 - **Tidak ada *tenant boundary* di dalam kode, dan tidak seharusnya ada.** Jika suatu saat Grooma perlu melayani banyak bisnis dalam satu deployment, itu perubahan arsitektur tersendiri yang minimal menyentuh: penambahan referensi tenant pada `Branch`/`Customer`/`Service`, perubahan unique index `serviceCode`/`customerCode` menjadi compound per tenant, dedupe customer by-phone menjadi per tenant, scoping pada seluruh service dan agregasi dashboard, serta penulisan ulang model billing §23.1.
 
 **Catatan:** apabila lebih dari satu akun HOST dibuat pada deployment yang sama (mis. beberapa co-owner), mereka akan berbagi seluruh data operasional dan tunduk pada mode pembayaran deployment yang sama. Secara teknis hal ini tetap berfungsi dan konsisten, tetapi masing-masing akun HOST tetap ditagih subscription-nya sendiri (§23.1).
+
+## 3.6. Pemisahan Backend Operasional dan Backend Admin
+
+**Backend operasional (repo ini) hanya melayani dua role: `HOST` dan `AGENT`.** Role `GROOMA_ADMIN` beserta seluruh fungsi platform-nya berada di **backend admin terpisah** yang memakai **database yang sama**.
+
+Ini sekaligus menyelesaikan implikasi arsitektur yang sebelumnya hanya dicatat di §23.1: pandangan subscription lintas-HOST memang tidak bisa hidup di dalam deployment operasional, karena setiap database hanya memuat satu `Subscription`. Backend admin adalah tempatnya.
+
+Yang berada di backend admin, bukan di sini:
+
+- Pengelolaan `SubscriptionPlan` (§5.10, §23.2)
+- Pandangan seluruh `Subscription` dan `Invoice` milik akun HOST (§7.11)
+- Override manual status subscription (§23.4)
+- Pembuatan dan provisioning akun `GROOMA_ADMIN`
+
+Karena database dibagi, baris ber-role `GROOMA_ADMIN` **tetap ada** pada koleksi `users` yang dibaca backend ini. Karena itu batasnya ditegakkan secara eksplisit, bukan diasumsikan dari ketiadaan data:
+
+1. **Session.** Backend ini hanya menerbitkan session untuk `HOST`/`AGENT`. Role lain ditolak di login *dan* pada setiap validasi session berikutnya — pemeriksaan kedua diperlukan agar session yang terbit sebelum batas ini ada, atau sebelum sebuah role diubah, tidak tetap hidup.
+2. **Staff namespace.** `GET/PATCH /users` disaring dengan *allowlist* positif (`HOST`/`AGENT`), bukan daftar pengecualian. Karena pembuatan role sekarang berada di codebase lain, daftar pengecualian akan mulai membocorkan data begitu backend admin menambah role baru yang lupa didaftarkan di sini; allowlist gagal secara tertutup.
+3. **Penulisan.** Enum role pada model User dan schema `/users` di backend ini hanya menerima `HOST`/`AGENT`, sehingga backend ini tidak dapat membuat atau mengubah akun menjadi role platform. Validasi enum Mongoose hanya berlaku saat menulis, sehingga baris admin yang sudah ada tetap dapat dibaca tanpa error.
+
+**Konsekuensi untuk perubahan di masa depan:** setiap penambahan role platform baru dilakukan di backend admin. Tidak ada yang perlu diubah di backend ini agar role tersebut tersaring — itulah alasan poin 2 memakai allowlist. Yang harus dihindari adalah menambahkan kembali role platform ke enum atau ke tipe session di sini.
 
 ---
 
@@ -616,7 +642,11 @@ Role dari frontend tidak pernah dianggap sebagai sumber otoritas.
 
 ## 6.4. Platform Admin Access
 
-`GROOMA_ADMIN` login menggunakan mekanisme session yang sama dengan HOST/AGENT, namun diakses melalui namespace terpisah (frontend: `/admin`, backend: `/api/v1/admin/*`). Middleware pada namespace ini menolak seluruh role selain `GROOMA_ADMIN`. Tidak ada endpoint publik untuk mendaftarkan akun `GROOMA_ADMIN`; akun ini diprovisikan secara internal.
+`GROOMA_ADMIN` **tidak login ke backend operasional.** Autentikasinya ditangani backend admin terpisah (§3.6), yang memakai database yang sama sehingga akunnya berada pada koleksi `users` yang sama.
+
+Backend operasional menegakkan batas ini secara aktif, bukan pasif: login dan setiap validasi session menolak role selain `HOST`/`AGENT`. Penolakan di login dilaporkan sebagai kredensial tidak valid biasa dan dilakukan **setelah** verifikasi password, agar selisih waktu respons tidak dapat dipakai untuk mengidentifikasi mana username milik akun admin.
+
+Tidak ada endpoint publik untuk mendaftarkan akun `GROOMA_ADMIN`; provisioning dilakukan oleh backend admin.
 
 ---
 
@@ -790,7 +820,7 @@ Untuk HOST (akses hanya ke subscription miliknya sendiri):
 | GET | `/subscription/invoices` | HOST (own) | Riwayat invoice |
 | GET | `/subscription/invoices/:id` | HOST (own) | Detail invoice + QRIS |
 
-Untuk `GROOMA_ADMIN` (namespace `/admin`, lihat §6.4):
+Endpoint berikut **bukan bagian dari backend operasional** — seluruhnya milik backend admin terpisah (§3.6), dan namespace `/admin/*` sudah dihapus dari backend ini. Didaftarkan di sini sebagai kontrak produk, bukan sebagai permukaan API repo ini:
 
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
@@ -1383,7 +1413,7 @@ Struktur ini merupakan rekomendasi awal. Hindari membuat abstraksi berlebihan se
 
 ## Phase 8 — Subscription & Billing (Platform)
 - `SubscriptionPlan`, `Subscription`, `SubscriptionInvoice` models.
-- Role `GROOMA_ADMIN` dan namespace `/api/v1/admin` beserta middleware-nya.
+- Role `GROOMA_ADMIN` dan namespace `/api/v1/admin` beserta middleware-nya. *(Dibangun di phase ini, lalu dipindahkan ke backend admin terpisah — §3.6. Tidak lagi ada di backend operasional.)*
 - Reuse integrasi Midtrans QRIS untuk invoice subscription.
 - Scheduled job siklus billing (generate invoice, grace period, auto-expire).
 - Middleware pembatasan akses HOST ketika subscription tidak aktif.
@@ -1430,7 +1460,7 @@ Backend Grooma dianggap memenuhi kriteria MVP apabila:
 14. Automated tests mencakup authorization, transaksi, pembayaran, approval, dan inventaris.
 15. Dokumentasi API dan konfigurasi environment tersedia.
 16. HOST membayar subscription bulanan sesuai plan aktif melalui QRIS, dan status subscription-nya tidak memengaruhi akses AGENT atau operasional POS pada cabang manapun.
-17. `GROOMA_ADMIN` dapat mengatur harga plan dan memantau/override status subscription seluruh akun HOST melalui namespace admin yang terisolasi dari role lain.
+17. `GROOMA_ADMIN` dapat mengatur harga plan dan memantau/override status subscription seluruh akun HOST melalui backend admin terpisah (§3.6). Untuk backend operasional, kriteria yang berlaku adalah sebaliknya: akun `GROOMA_ADMIN` tidak dapat memperoleh session, tidak muncul pada `GET /users`, dan tidak dapat dibuat dari sini.
 
 ---
 
@@ -1438,7 +1468,7 @@ Backend Grooma dianggap memenuhi kriteria MVP apabila:
 
 Grooma menggunakan Next.js App Router, TypeScript, MongoDB, dan Mongoose dengan arsitektur modular monolith.
 
-Pembagian akses menggunakan dua role operasional utama, yaitu HOST dan AGENT, ditambah branch-based authorization untuk menjaga isolasi data operasional. Role ketiga, `GROOMA_ADMIN`, berada di layer platform/vendor dan terisolasi penuh dari operasional barbershop — digunakan khusus untuk mengelola monetisasi subscription (§23).
+Pembagian akses menggunakan dua role operasional utama, yaitu HOST dan AGENT, ditambah branch-based authorization untuk menjaga isolasi data operasional. Role ketiga, `GROOMA_ADMIN`, berada di layer platform/vendor dan terisolasi penuh dari operasional barbershop — digunakan khusus untuk mengelola monetisasi subscription (§23). Isolasinya bukan lagi sekadar pembatasan role di dalam satu backend, melainkan pemisahan service: role itu hidup di backend admin tersendiri dengan database yang sama (§3.6).
 
 Transaksi menjadi sumber utama laporan omzet, sementara pembayaran QRIS diproses melalui Midtrans dan diverifikasi melalui notifikasi gateway.
 
@@ -1452,12 +1482,12 @@ Implementasi MVP harus memprioritaskan keamanan, konsistensi data, dan validitas
 
 # 23. Subscription & Billing Workflow (Addendum)
 
-Section ini ditambahkan di v1.1 untuk mendefinisikan monetisasi platform: HOST membayar subscription bulanan untuk menggunakan Grooma, dikelola oleh role internal `GROOMA_ADMIN`. Lihat juga §1.3, §3.1, §3.4, §5.10–§5.12, §6.4, §7.11, §9.5.
+Section ini ditambahkan di v1.1 untuk mendefinisikan monetisasi platform: HOST membayar subscription bulanan untuk menggunakan Grooma, dikelola oleh role internal `GROOMA_ADMIN`. Lihat juga §1.3, §3.1, §3.4, §3.6, §5.10–§5.12, §6.4, §7.11, §9.5.
 
 ## 23.1. Model Bisnis
 
 - Billing bersifat **per akun HOST** (seat-based). Karena satu deployment melayani satu HOST (§3.5), dalam praktiknya satu deployment menagih satu subscription.
-- **Implikasi arsitektur yang perlu disadari:** modul ini (`/admin/subscriptions`, §7.11) dirancang sebagai dashboard platform yang melihat subscription *seluruh* HOST, padahal pada arsitektur satu deployment per HOST setiap database hanya memuat satu `Subscription`. Pandangan lintas-HOST karena itu tidak berada di dalam deployment manapun — tempatnya di aplikasi web admin terpusat yang mengagregasi banyak deployment. `GROOMA_ADMIN` di dalam sebuah deployment hanya mengelola subscription HOST deployment tersebut.
+- **Implikasi arsitektur — sudah diselesaikan, lihat §3.6:** modul ini (`/admin/subscriptions`, §7.11) dirancang sebagai dashboard platform yang melihat subscription *seluruh* HOST, padahal pada arsitektur satu deployment per HOST setiap database hanya memuat satu `Subscription`. Pandangan lintas-HOST karena itu memang tidak dapat berada di dalam deployment operasional manapun. Penyelesaiannya: modul admin dipindahkan ke **backend admin terpisah** (§3.6), dan namespace `/api/v1/admin/*` dihapus dari backend operasional. Yang tersisa di backend operasional hanyalah permukaan subscription milik HOST sendiri (`/subscription*`).
 - Biaya saat ini **Rp50.000/bulan** per akun HOST, disimpan sebagai data (`SubscriptionPlan.price`), bukan nilai hardcoded, agar dapat diubah `GROOMA_ADMIN` dari dashboard admin tanpa deploy ulang.
 - Subscription tidak memengaruhi operasional POS: AGENT dan transaksi cabang tetap berjalan normal terlepas dari status subscription HOST manapun.
 - Pembayaran subscription ini selalu memakai akun Midtrans milik Grooma, terlepas dari `paymentIntegrationMode` (§9.6) yang dipilih HOST untuk transaksi POS-nya sendiri — keduanya hubungan pembayaran yang berbeda (HOST-ke-Grooma untuk lisensi, vs. customer-ke-HOST untuk transaksi POS).

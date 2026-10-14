@@ -1,91 +1,20 @@
 // @/services/subscriptionService.ts
+//
+// HOST-facing subscription reads only. Plan CRUD and the platform-wide
+// subscription list / manual status override were GROOMA_ADMIN operations
+// and now live in the separate admin backend that shares this database.
+// Writes to Subscription from this service are the billing cycle's job
+// (services/billingService.ts), not an operator's.
 
-import { Errors } from "@/lib/errors";
 import { connectDB } from "@/lib/mongodb";
 import type { ISubscription } from "@/models/Subscription";
 import SubscriptionModel from "@/models/Subscription";
-import type { ISubscriptionPlan } from "@/models/SubscriptionPlan";
-import SubscriptionPlanModel from "@/models/SubscriptionPlan";
-import type {
-  CreateSubscriptionPlanInput,
-  ListSubscriptionsQuery,
-  UpdateSubscriptionPlanInput,
-  UpdateSubscriptionStatusInput,
-} from "@/validations/subscriptionSchema";
-
-interface SubscriptionsListResponse {
-  subscriptions: ISubscription[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    pages: number;
-  };
-}
-
-export async function createSubscriptionPlan(
-  input: CreateSubscriptionPlanInput,
-): Promise<ISubscriptionPlan> {
-  await connectDB();
-
-  // Check if code already exists
-  const existing = await SubscriptionPlanModel.findOne({ code: input.code });
-  if (existing) {
-    throw Errors.conflict(
-      `Subscription plan code '${input.code}' already exists.`,
-    );
-  }
-
-  const plan = new SubscriptionPlanModel(input);
-  await plan.save();
-
-  return plan.toObject();
-}
-
-export async function updateSubscriptionPlan(
-  planId: string,
-  input: UpdateSubscriptionPlanInput,
-): Promise<ISubscriptionPlan> {
-  await connectDB();
-
-  const plan = await SubscriptionPlanModel.findById(planId);
-  if (!plan) {
-    throw Errors.notFound("Subscription Plan");
-  }
-
-  Object.assign(plan, input);
-  await plan.save();
-
-  return plan.toObject();
-}
-
-export async function getSubscriptionPlan(
-  planId: string,
-): Promise<ISubscriptionPlan> {
-  await connectDB();
-
-  const plan = await SubscriptionPlanModel.findById(planId);
-  if (!plan) {
-    throw Errors.notFound("Subscription Plan");
-  }
-
-  return plan.toObject();
-}
-
-export async function listSubscriptionPlans(
-  isActive?: boolean,
-): Promise<ISubscriptionPlan[]> {
-  await connectDB();
-
-  const query: Record<string, unknown> = {};
-  if (isActive !== undefined) {
-    query.isActive = isActive;
-  }
-
-  const plans = await SubscriptionPlanModel.find(query).sort({ createdAt: -1 });
-
-  return plans.map((p) => p.toObject());
-}
+// Imported for its side effect: `.populate("plan")` below resolves the
+// "SubscriptionPlan" model through Mongoose's registry, which only has it
+// once this module has been loaded. Nothing else on the /subscription route's
+// import path pulls it in, so dropping this line makes the populate throw
+// MissingSchemaError at runtime rather than failing at build.
+import "@/models/SubscriptionPlan";
 
 export async function getSubscriptionByHostId(
   hostId: string,
@@ -101,80 +30,6 @@ export async function getSubscriptionByHostId(
   }
 
   return subscription;
-}
-
-export async function getSubscriptionById(
-  subscriptionId: string,
-): Promise<ISubscription> {
-  await connectDB();
-
-  const subscription = await SubscriptionModel.findById(subscriptionId)
-    .populate("plan")
-    .lean();
-
-  if (!subscription) {
-    throw Errors.notFound("Subscription");
-  }
-
-  return subscription;
-}
-
-export async function listSubscriptions(
-  query: ListSubscriptionsQuery,
-): Promise<SubscriptionsListResponse> {
-  await connectDB();
-
-  const filter: Record<string, unknown> = {};
-  if (query.status) {
-    filter.status = query.status;
-  }
-  if (query.hostId) {
-    filter.host = query.hostId;
-  }
-
-  const skip = (query.page - 1) * query.limit;
-  const [subscriptions, total] = await Promise.all([
-    SubscriptionModel.find(filter)
-      .populate("host", "username name email")
-      .populate("plan")
-      .skip(skip)
-      .limit(query.limit)
-      .sort({ createdAt: -1 })
-      .lean(),
-    SubscriptionModel.countDocuments(filter),
-  ]);
-
-  return {
-    subscriptions,
-    pagination: {
-      page: query.page,
-      limit: query.limit,
-      total,
-      pages: Math.ceil(total / query.limit),
-    },
-  };
-}
-
-export async function updateSubscriptionStatus(
-  subscriptionId: string,
-  input: UpdateSubscriptionStatusInput,
-): Promise<ISubscription> {
-  await connectDB();
-
-  const subscription = await SubscriptionModel.findById(subscriptionId);
-  if (!subscription) {
-    throw Errors.notFound("Subscription");
-  }
-
-  subscription.status = input.status;
-  if (input.status === "CANCELLED") {
-    subscription.cancelledAt = new Date();
-    subscription.cancelReason = input.cancelReason;
-  }
-
-  await subscription.save();
-
-  return subscription.toObject();
 }
 
 // Helper: Get HOST's subscription status for access control

@@ -1,6 +1,6 @@
 // @/services/userService.ts
 import type { SessionUser } from "@/lib/auth";
-import { hashPassword } from "@/lib/auth";
+import { hashPassword, SERVICE_ROLES } from "@/lib/auth";
 import { Errors } from "@/lib/errors";
 import { connectDB } from "@/lib/mongodb";
 import BranchModel from "@/models/Branch";
@@ -12,10 +12,19 @@ import type {
   UpdateUserInput,
 } from "@/validations/userSchema";
 
-// GROOMA_ADMIN accounts are platform-internal and never visible or editable
-// through the ordinary /users namespace (§3.4, §23.1) — every lookup here
-// excludes that role, so such an account 404s exactly like it doesn't exist.
-const EXCLUDE_ADMIN_FILTER = { role: { $ne: "GROOMA_ADMIN" } };
+// The staff namespace is scoped to the roles this service owns, so a
+// platform-internal account 404s here exactly like it doesn't exist
+// (§3.4, §23.1).
+//
+// This matters more than it looks: the admin backend shares this database and
+// is what creates GROOMA_ADMIN rows, so they are genuinely present in the
+// `users` collection and would otherwise show up in a HOST's staff list.
+//
+// Deliberately a positive allowlist rather than the `$ne: "GROOMA_ADMIN"` it
+// replaced — role creation now lives in another codebase, and an exclusion
+// list silently starts leaking the moment that codebase adds a role nobody
+// remembered to add here. Unknown roles are excluded by default.
+const SERVICE_ROLE_FILTER = { role: { $in: [...SERVICE_ROLES] } };
 
 interface PopulatedBranch {
   _id: { toString(): string };
@@ -94,7 +103,7 @@ export async function createUser(input: CreateUserInput) {
 
 export async function listUsers() {
   await connectDB();
-  const users = await UserModel.find(EXCLUDE_ADMIN_FILTER)
+  const users = await UserModel.find(SERVICE_ROLE_FILTER)
     .sort({ createdAt: -1 })
     .populate("branch", "name");
 
@@ -105,7 +114,7 @@ export async function getUserById(id: string) {
   await connectDB();
   const user = await UserModel.findOne({
     _id: id,
-    ...EXCLUDE_ADMIN_FILTER,
+    ...SERVICE_ROLE_FILTER,
   }).populate("branch", "name");
 
   if (!user) {
@@ -117,7 +126,7 @@ export async function getUserById(id: string) {
 
 export async function updateUser(id: string, input: UpdateUserInput) {
   await connectDB();
-  const user = await UserModel.findOne({ _id: id, ...EXCLUDE_ADMIN_FILTER });
+  const user = await UserModel.findOne({ _id: id, ...SERVICE_ROLE_FILTER });
 
   if (!user) {
     throw Errors.notFound("User not found.");
@@ -143,7 +152,7 @@ export async function updateUser(id: string, input: UpdateUserInput) {
 
 export async function setUserStatus(id: string, input: SetUserStatusInput) {
   await connectDB();
-  const user = await UserModel.findOne({ _id: id, ...EXCLUDE_ADMIN_FILTER });
+  const user = await UserModel.findOne({ _id: id, ...SERVICE_ROLE_FILTER });
 
   if (!user) {
     throw Errors.notFound("User not found.");

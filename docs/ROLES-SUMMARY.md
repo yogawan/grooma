@@ -22,15 +22,15 @@
 - Lihat dashboard & profil cabangnya
 - Login tidak pernah terblokir oleh status subscription HOST
 
-## GROOMA_ADMIN
-*Admin internal platform (vendor), tanpa cabang, di luar operasional POS.*
-- Kelola konfigurasi `SubscriptionPlan` (harga, aktif/nonaktif)
-- Lihat semua `Subscription` & `Invoice` milik seluruh akun HOST
-- Override manual status subscription (mis. setelah verifikasi pembayaran manual)
-- **Tidak** mengatur mode pembayaran — itu env var deployment, bukan data yang bisa diubah lewat API (PRD §9.6)
-- Akses lewat namespace API terpisah `/api/v1/admin/*`
-- **Tidak bisa** akses data operasional (customer/transaksi/inventaris), kecuali untuk audit billing
-- Akun tidak bisa dibuat lewat endpoint publik — provisioning internal saja
+## GROOMA_ADMIN — tidak ada di backend ini
+*Role admin platform **sudah dipindahkan ke backend admin terpisah** yang memakai database yang sama (PRD §3.6).*
+
+Backend ini hanya mengenal `HOST` dan `AGENT`. Yang pindah: pengelolaan `SubscriptionPlan`, pandangan seluruh `Subscription`/`Invoice`, dan override manual status subscription — dulu ada di `/api/v1/admin/*`, namespace itu kini tidak ada di sini.
+
+Karena databasenya dibagi, baris `GROOMA_ADMIN` **tetap ada** di koleksi `users`. Yang menjadi batasnya:
+- Backend ini **tidak menerbitkan session** untuk role selain `HOST`/`AGENT` — ditolak di login maupun di setiap validasi session berikutnya (`isServiceRole`, `lib/auth.ts`)
+- Akun admin **tidak muncul** di `GET /api/v1/users` dan tidak bisa diedit lewat namespace itu — filternya allowlist positif, jadi role platform baru apa pun otomatis ikut tersaring (`services/userService.ts`)
+- Role admin **tidak bisa dibuat** dari sini: enum `models/User.ts` dan schema `/users` hanya menerima `HOST`/`AGENT`
 
 ---
 
@@ -43,14 +43,14 @@
 |---|---|---|
 | POST | `/api/v1/auth/login` | Public |
 | POST | `/api/v1/auth/logout` | Any (sesi valid) |
-| GET | `/api/v1/auth/me` | HOST, AGENT, GROOMA_ADMIN |
-| POST | `/api/v1/auth/change-password` | HOST, AGENT, GROOMA_ADMIN |
+| GET | `/api/v1/auth/me` | HOST, AGENT |
+| POST | `/api/v1/auth/change-password` | HOST, AGENT |
 
 ### Profile
 | Method | Endpoint | Roles |
 |---|---|---|
-| GET | `/api/v1/profile` | HOST, AGENT, GROOMA_ADMIN (milik sendiri) |
-| PATCH | `/api/v1/profile` | HOST, AGENT, GROOMA_ADMIN (milik sendiri) |
+| GET | `/api/v1/profile` | HOST, AGENT (milik sendiri) |
+| PATCH | `/api/v1/profile` | HOST, AGENT (milik sendiri) |
 
 ### Users (pegawai)
 | Method | Endpoint | Roles |
@@ -141,15 +141,7 @@
 | GET | `/api/v1/subscription/invoices/{id}` | HOST (milik sendiri) |
 
 ### Admin Platform
-| Method | Endpoint | Roles |
-|---|---|---|
-| GET | `/api/v1/admin/subscription-plans` | GROOMA_ADMIN |
-| POST | `/api/v1/admin/subscription-plans` | GROOMA_ADMIN |
-| GET | `/api/v1/admin/subscription-plans/{id}` | GROOMA_ADMIN |
-| PATCH | `/api/v1/admin/subscription-plans/{id}` | GROOMA_ADMIN |
-| GET | `/api/v1/admin/subscriptions` | GROOMA_ADMIN |
-| GET | `/api/v1/admin/subscriptions/{id}` | GROOMA_ADMIN |
-| PATCH | `/api/v1/admin/subscriptions/{id}` | GROOMA_ADMIN |
+Tidak ada di backend ini. Namespace `/api/v1/admin/*` sudah dihapus dan pindah ke backend admin terpisah (PRD §3.6).
 
 ### Internal
 | Method | Endpoint | Roles |

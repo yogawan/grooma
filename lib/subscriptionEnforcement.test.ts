@@ -66,19 +66,10 @@ describe("assertSubscriptionAllowsAccess", () => {
     });
   });
 
-  describe("GROOMA_ADMIN", () => {
-    const admin = createMockSessionUser({
-      role: "GROOMA_ADMIN",
-      branch: null,
-    });
-
-    it.each([
-      ...BLOCKING,
-      ...PASSING,
-    ])("has no subscription requirement when status is %s", (s) => {
-      expect(() => assertSubscriptionAllowsAccess(admin, s)).not.toThrow();
-    });
-  });
+  // A GROOMA_ADMIN block used to sit here, asserting that role carried no
+  // subscription requirement. It moved to the admin backend; the behaviour it
+  // covered is the `role !== "HOST"` early return, which the AGENT cases above
+  // already exercise.
 
   it("treats an unrecognized status as non-blocking rather than locking out", () => {
     const host = createMockSessionUser({ role: "HOST", branch: null });

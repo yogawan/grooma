@@ -1,8 +1,10 @@
 // @/validations/userSchema.ts
 import { z } from "zod";
 
-// GROOMA_ADMIN is deliberately excluded from this enum: that role cannot be
-// created or edited through the normal /users endpoints (§3.1, §23.1).
+// The only two roles this service knows. Platform-internal roles are created
+// by the admin backend against the same database and are not assignable here
+// (§3.1, §23.1) — services/userService.ts also filters them out of every
+// /users read, so they cannot be reached for editing either.
 const assignableRole = z.enum(["HOST", "AGENT"]);
 
 export const createUserSchema = z

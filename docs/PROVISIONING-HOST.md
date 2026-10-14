@@ -80,16 +80,9 @@ SEED_HOST_NAME='Nama Pemilik' \
   bun run seed:host
 ```
 
-Opsional, bila deployment ini perlu akun platform-admin lokal (mis. untuk mengelola subscription HOST tersebut):
+Script ini idempoten — aman dijalankan ulang, dan tidak akan menimpa password akun yang sudah ada. Ia menolak berjalan tanpa env var, tanpa fallback hardcoded, dan juga **menolak** bila deployment ini sudah memiliki akun HOST (satu deployment = satu HOST, PRD §3.5).
 
-```bash
-SEED_ADMIN_USERNAME=admin \
-SEED_ADMIN_PASSWORD='<password kuat, unik per deployment>' \
-SEED_ADMIN_NAME='Nama Admin' \
-  bun run seed:admin
-```
-
-Kedua script idempoten — aman dijalankan ulang, dan tidak akan menimpa password akun yang sudah ada. Keduanya menolak berjalan tanpa env var, tanpa fallback hardcoded. `seed:host` juga **menolak** bila deployment ini sudah memiliki akun HOST (satu deployment = satu HOST, PRD §3.5).
+> **Tidak ada langkah seed admin di sini.** Backend ini hanya mengenal role `HOST` dan `AGENT`. Akun `GROOMA_ADMIN` dibuat oleh backend admin terpisah yang memakai database yang sama, jadi tidak ada `seed:admin` pada provisioning deployment — lihat §3.6 PRD. Backend ini pun tidak akan menerbitkan session untuk akun admin walaupun barisnya ada di database yang sama.
 
 **Subscription awal tidak dibuat oleh provisioning**, dan itu disengaja: HOST tanpa record `Subscription` tetap diizinkan mengakses aplikasi, sehingga deployment baru dapat langsung dipakai sebelum siklus billing pertama menerbitkan invoice. Hanya status non-paying eksplisit (`PAST_DUE`/`EXPIRED`/`CANCELLED`) yang memicu HTTP 402 (PRD §23.4).
 

@@ -10,7 +10,6 @@
     "format": "biome format --write",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "seed:admin": "bun scripts/seedAdmin.ts",
     "seed:host": "bun scripts/seedHost.ts"
   },
   "dependencies": {

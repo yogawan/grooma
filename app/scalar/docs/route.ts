@@ -2,7 +2,7 @@
 import { notFound } from "next/navigation";
 import type { NextRequest } from "next/server";
 
-export const GET = async (request: NextRequest) => {
+export const GET = async (_request: NextRequest) => {
   // Hide Scalar docs in production
   if (process.env.NODE_ENV === "production") {
     notFound();

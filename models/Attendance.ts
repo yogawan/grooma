@@ -1,5 +1,5 @@
 // @/models/Attendance.ts
-import mongoose, { Schema, model, models } from "mongoose";
+import { Schema, model, models } from "mongoose";
 
 const AttendanceSchema = new Schema(
   {

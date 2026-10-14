@@ -23,19 +23,22 @@
     }
   ],
   "tags": [
-    {"name": "Authentication", "description": "Login, logout, session management"},
-    {"name": "Branches", "description": "Branch management (HOST only)"},
-    {"name": "Users", "description": "User management"},
-    {"name": "Customers", "description": "Customer management"},
-    {"name": "Services", "description": "Service catalog"},
-    {"name": "Transactions", "description": "POS transactions"},
-    {"name": "Payments", "description": "Payment processing"},
-    {"name": "Approvals", "description": "Transaction change requests"},
-    {"name": "Inventory", "description": "Stock management"},
-    {"name": "Dashboard", "description": "Analytics & reporting"},
-    {"name": "Subscriptions", "description": "HOST subscriptions (Platform)"},
-    {"name": "Admin", "description": "GROOMA_ADMIN controls"},
-    {"name": "Internal", "description": "Cron & internal endpoints"}
+    {
+      "name": "Authentication",
+      "description": "Login, logout, session management"
+    },
+    { "name": "Branches", "description": "Branch management (HOST only)" },
+    { "name": "Users", "description": "User management" },
+    { "name": "Customers", "description": "Customer management" },
+    { "name": "Services", "description": "Service catalog" },
+    { "name": "Transactions", "description": "POS transactions" },
+    { "name": "Payments", "description": "Payment processing" },
+    { "name": "Approvals", "description": "Transaction change requests" },
+    { "name": "Inventory", "description": "Stock management" },
+    { "name": "Dashboard", "description": "Analytics & reporting" },
+    { "name": "Subscriptions", "description": "HOST subscriptions (Platform)" },
+    { "name": "Admin", "description": "GROOMA_ADMIN controls" },
+    { "name": "Internal", "description": "Cron & internal endpoints" }
   ],
   "paths": {
     "/api/v1/auth/login": {
@@ -49,8 +52,8 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "username": {"type": "string", "minLength": 1},
-                  "password": {"type": "string", "minLength": 1}
+                  "username": { "type": "string", "minLength": 1 },
+                  "password": { "type": "string", "minLength": 1 }
                 },
                 "required": ["username", "password"]
               }
@@ -109,8 +112,8 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "currentPassword": {"type": "string"},
-                  "newPassword": {"type": "string", "minLength": 8}
+                  "currentPassword": { "type": "string" },
+                  "newPassword": { "type": "string", "minLength": 8 }
                 },
                 "required": ["currentPassword", "newPassword"]
               }
@@ -135,7 +138,7 @@
         "tags": ["Branches"],
         "summary": "List branches (HOST sees all, AGENT sees own)",
         "responses": {
-          "200": {"description": "List of branches"}
+          "200": { "description": "List of branches" }
         }
       },
       "post": {
@@ -148,11 +151,19 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "branchCode": {"type": "string", "minLength": 1, "maxLength": 32},
-                  "name": {"type": "string", "minLength": 1, "maxLength": 100},
-                  "address": {"type": "string"},
-                  "phone": {"type": "string"},
-                  "timezone": {"type": "string", "default": "Asia/Jakarta"}
+                  "branchCode": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "address": { "type": "string" },
+                  "phone": { "type": "string" },
+                  "timezone": { "type": "string", "default": "Asia/Jakarta" }
                 },
                 "required": ["branchCode", "name"]
               }
@@ -160,8 +171,8 @@
           }
         },
         "responses": {
-          "201": {"description": "Branch created"},
-          "403": {"description": "Forbidden (not HOST)"}
+          "201": { "description": "Branch created" },
+          "403": { "description": "Forbidden (not HOST)" }
         }
       }
     },
@@ -169,383 +180,593 @@
       "get": {
         "tags": ["Branches"],
         "summary": "Get branch detail",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Branch detail"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Branch detail" } }
       },
       "patch": {
         "tags": ["Branches"],
         "summary": "Update branch (HOST only)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Branch updated"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Branch updated" } }
       }
     },
     "/api/v1/branches/{id}/status": {
       "patch": {
         "tags": ["Branches"],
         "summary": "Set branch status ACTIVE/INACTIVE (HOST only)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Status updated"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Status updated" } }
       }
     },
     "/api/v1/users": {
       "get": {
         "tags": ["Users"],
         "summary": "List users (HOST only)",
-        "responses": {"200": {"description": "List of users"}}
+        "responses": { "200": { "description": "List of users" } }
       },
       "post": {
         "tags": ["Users"],
         "summary": "Create user (HOST only)",
-        "responses": {"201": {"description": "User created"}}
+        "responses": { "201": { "description": "User created" } }
       }
     },
     "/api/v1/users/{id}": {
       "get": {
         "tags": ["Users"],
         "summary": "Get user detail (HOST only)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "User detail"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "User detail" } }
       },
       "patch": {
         "tags": ["Users"],
         "summary": "Update user (HOST only)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "User updated"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "User updated" } }
       }
     },
     "/api/v1/users/{id}/status": {
       "patch": {
         "tags": ["Users"],
         "summary": "Set user status (HOST only)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Status updated"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Status updated" } }
       }
     },
     "/api/v1/customers": {
       "get": {
         "tags": ["Customers"],
         "summary": "List customers (HOST/AGENT)",
-        "responses": {"200": {"description": "List of customers"}}
+        "responses": { "200": { "description": "List of customers" } }
       },
       "post": {
         "tags": ["Customers"],
         "summary": "Create customer (HOST/AGENT)",
-        "responses": {"201": {"description": "Customer created"}}
+        "responses": { "201": { "description": "Customer created" } }
       }
     },
     "/api/v1/customers/{id}": {
       "get": {
         "tags": ["Customers"],
         "summary": "Get customer detail (HOST/AGENT)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Customer detail"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Customer detail" } }
       },
       "patch": {
         "tags": ["Customers"],
         "summary": "Update customer (HOST/AGENT)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Customer updated"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Customer updated" } }
       }
     },
     "/api/v1/customers/{id}/status": {
       "patch": {
         "tags": ["Customers"],
         "summary": "Set customer status (HOST only)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Status updated"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Status updated" } }
       }
     },
     "/api/v1/services": {
       "get": {
         "tags": ["Services"],
         "summary": "List services (HOST/AGENT)",
-        "responses": {"200": {"description": "List of services"}}
+        "responses": { "200": { "description": "List of services" } }
       },
       "post": {
         "tags": ["Services"],
         "summary": "Create service (HOST only)",
-        "responses": {"201": {"description": "Service created"}}
+        "responses": { "201": { "description": "Service created" } }
       }
     },
     "/api/v1/services/{id}": {
       "get": {
         "tags": ["Services"],
         "summary": "Get service detail (HOST/AGENT)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Service detail"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Service detail" } }
       },
       "patch": {
         "tags": ["Services"],
         "summary": "Update service (HOST/AGENT)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Service updated"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Service updated" } }
       }
     },
     "/api/v1/services/{id}/status": {
       "patch": {
         "tags": ["Services"],
         "summary": "Set service status (HOST only)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Status updated"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Status updated" } }
       }
     },
     "/api/v1/transactions": {
       "get": {
         "tags": ["Transactions"],
         "summary": "List transactions",
-        "responses": {"200": {"description": "List of transactions"}}
+        "responses": { "200": { "description": "List of transactions" } }
       },
       "post": {
         "tags": ["Transactions"],
         "summary": "Create transaction (AGENT only)",
-        "responses": {"201": {"description": "Transaction created"}}
+        "responses": { "201": { "description": "Transaction created" } }
       }
     },
     "/api/v1/transactions/{id}": {
       "get": {
         "tags": ["Transactions"],
         "summary": "Get transaction detail",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Transaction detail"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Transaction detail" } }
       }
     },
     "/api/v1/transactions/{id}/complete": {
       "post": {
         "tags": ["Transactions"],
         "summary": "Mark transaction complete (AGENT only)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Transaction completed"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Transaction completed" } }
       }
     },
     "/api/v1/transactions/{id}/cancel": {
       "post": {
         "tags": ["Transactions"],
         "summary": "Cancel transaction",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Transaction cancelled"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Transaction cancelled" } }
       }
     },
     "/api/v1/transactions/{id}/receipt": {
       "get": {
         "tags": ["Transactions"],
         "summary": "Get transaction receipt (increments printCount)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Receipt data"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Receipt data" } }
       }
     },
     "/api/v1/payments/qris": {
       "post": {
         "tags": ["Payments"],
         "summary": "Create QRIS payment for transaction (AGENT only)",
-        "responses": {"201": {"description": "Payment created with QRIS"}}
+        "responses": { "201": { "description": "Payment created with QRIS" } }
       }
     },
     "/api/v1/payments/{id}": {
       "get": {
         "tags": ["Payments"],
         "summary": "Get payment detail",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Payment detail"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Payment detail" } }
       }
     },
     "/api/v1/payments/midtrans/notification": {
       "post": {
         "tags": ["Payments"],
         "summary": "Midtrans webhook notification (PUBLIC, signature verified)",
-        "responses": {"200": {"description": "Notification processed"}}
+        "responses": { "200": { "description": "Notification processed" } }
       }
     },
     "/api/v1/transaction-change-requests": {
       "post": {
         "tags": ["Approvals"],
         "summary": "Submit change request (HOST/AGENT)",
-        "responses": {"201": {"description": "Request submitted"}}
+        "responses": { "201": { "description": "Request submitted" } }
       },
       "get": {
         "tags": ["Approvals"],
         "summary": "List pending requests (HOST only)",
-        "responses": {"200": {"description": "List of change requests"}}
+        "responses": { "200": { "description": "List of change requests" } }
       }
     },
     "/api/v1/transaction-change-requests/{id}": {
       "get": {
         "tags": ["Approvals"],
         "summary": "Get change request detail (HOST or requester)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Change request detail"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Change request detail" } }
       }
     },
     "/api/v1/transaction-change-requests/{id}/approve": {
       "post": {
         "tags": ["Approvals"],
         "summary": "Approve request (HOST only, cannot self-approve)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Request approved"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Request approved" } }
       }
     },
     "/api/v1/transaction-change-requests/{id}/reject": {
       "post": {
         "tags": ["Approvals"],
         "summary": "Reject request (HOST only, requires reason)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Request rejected"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Request rejected" } }
       }
     },
     "/api/v1/inventory": {
       "get": {
         "tags": ["Inventory"],
         "summary": "List inventory items (HOST/AGENT)",
-        "responses": {"200": {"description": "List of items"}}
+        "responses": { "200": { "description": "List of items" } }
       },
       "post": {
         "tags": ["Inventory"],
         "summary": "Create inventory item (HOST/AGENT)",
-        "responses": {"201": {"description": "Item created"}}
+        "responses": { "201": { "description": "Item created" } }
       }
     },
     "/api/v1/inventory/{id}": {
       "get": {
         "tags": ["Inventory"],
         "summary": "Get item detail (HOST/AGENT)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Item detail"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Item detail" } }
       },
       "patch": {
         "tags": ["Inventory"],
         "summary": "Update item (HOST/AGENT, excludes quantity)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Item updated"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Item updated" } }
       },
       "delete": {
         "tags": ["Inventory"],
         "summary": "Soft-delete item (HOST/AGENT)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Item deleted"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Item deleted" } }
       }
     },
     "/api/v1/inventory/{id}/stock-movements": {
       "get": {
         "tags": ["Inventory"],
         "summary": "List stock movements for item (HOST/AGENT)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "List of movements"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "List of movements" } }
       },
       "post": {
         "tags": ["Inventory"],
         "summary": "Create stock movement (IN/OUT/ADJUSTMENT) (HOST/AGENT)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"201": {"description": "Movement recorded"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "201": { "description": "Movement recorded" } }
       }
     },
     "/api/v1/dashboard/summary": {
       "get": {
         "tags": ["Dashboard"],
         "summary": "Dashboard summary (total revenue, transaction count, etc)",
-        "responses": {"200": {"description": "Summary data"}}
+        "responses": { "200": { "description": "Summary data" } }
       }
     },
     "/api/v1/dashboard/revenue": {
       "get": {
         "tags": ["Dashboard"],
         "summary": "Revenue analytics by period",
-        "responses": {"200": {"description": "Revenue data"}}
+        "responses": { "200": { "description": "Revenue data" } }
       }
     },
     "/api/v1/dashboard/services": {
       "get": {
         "tags": ["Dashboard"],
         "summary": "Top 10 services by revenue",
-        "responses": {"200": {"description": "Service performance"}}
+        "responses": { "200": { "description": "Service performance" } }
       }
     },
     "/api/v1/dashboard/agents": {
       "get": {
         "tags": ["Dashboard"],
         "summary": "Agent performance analytics (AGENT sees self only)",
-        "responses": {"200": {"description": "Agent performance"}}
+        "responses": { "200": { "description": "Agent performance" } }
       }
     },
     "/api/v1/dashboard/transactions": {
       "get": {
         "tags": ["Dashboard"],
         "summary": "Transaction stats by status/payment",
-        "responses": {"200": {"description": "Transaction stats"}}
+        "responses": { "200": { "description": "Transaction stats" } }
       }
     },
     "/api/v1/dashboard/inventory": {
       "get": {
         "tags": ["Dashboard"],
         "summary": "Low-stock inventory items",
-        "responses": {"200": {"description": "Low-stock items"}}
+        "responses": { "200": { "description": "Low-stock items" } }
       }
     },
     "/api/v1/subscription": {
       "get": {
         "tags": ["Subscriptions"],
         "summary": "Get current subscription (HOST views own)",
-        "responses": {"200": {"description": "Subscription detail"}}
+        "responses": { "200": { "description": "Subscription detail" } }
       }
     },
     "/api/v1/subscription/invoices": {
       "get": {
         "tags": ["Subscriptions"],
         "summary": "List invoices (HOST views own)",
-        "responses": {"200": {"description": "List of invoices"}}
+        "responses": { "200": { "description": "List of invoices" } }
       }
     },
     "/api/v1/subscription/invoices/{id}": {
       "get": {
         "tags": ["Subscriptions"],
         "summary": "Get invoice detail (HOST views own)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Invoice detail"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Invoice detail" } }
       }
     },
     "/api/v1/admin/subscription-plans": {
       "get": {
         "tags": ["Admin"],
         "summary": "List all subscription plans (GROOMA_ADMIN only)",
-        "responses": {"200": {"description": "List of plans"}}
+        "responses": { "200": { "description": "List of plans" } }
       },
       "post": {
         "tags": ["Admin"],
         "summary": "Create subscription plan (GROOMA_ADMIN only)",
-        "responses": {"201": {"description": "Plan created"}}
+        "responses": { "201": { "description": "Plan created" } }
       }
     },
     "/api/v1/admin/subscription-plans/{id}": {
       "get": {
         "tags": ["Admin"],
         "summary": "Get plan detail (GROOMA_ADMIN only)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Plan detail"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Plan detail" } }
       },
       "patch": {
         "tags": ["Admin"],
         "summary": "Update plan (GROOMA_ADMIN only)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Plan updated"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Plan updated" } }
       }
     },
     "/api/v1/admin/subscriptions": {
       "get": {
         "tags": ["Admin"],
         "summary": "List all subscriptions (GROOMA_ADMIN only)",
-        "responses": {"200": {"description": "List of subscriptions"}}
+        "responses": { "200": { "description": "List of subscriptions" } }
       }
     },
     "/api/v1/admin/subscriptions/{id}": {
       "get": {
         "tags": ["Admin"],
         "summary": "Get subscription detail (GROOMA_ADMIN only)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Subscription detail"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Subscription detail" } }
       },
       "patch": {
         "tags": ["Admin"],
         "summary": "Override subscription status (GROOMA_ADMIN only)",
-        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}],
-        "responses": {"200": {"description": "Status updated"}}
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": { "200": { "description": "Status updated" } }
       }
     },
     "/api/v1/internal/subscriptions/run-billing-cycle": {
@@ -553,8 +774,8 @@
         "tags": ["Internal"],
         "summary": "Billing cycle cron (INTERNAL_CRON_SECRET auth header)",
         "responses": {
-          "200": {"description": "Cycle completed"},
-          "401": {"description": "Invalid secret"}
+          "200": { "description": "Cycle completed" },
+          "401": { "description": "Invalid secret" }
         }
       }
     }
@@ -569,7 +790,5 @@
       }
     }
   },
-  "security": [
-    {"sessionCookie": []}
-  ]
+  "security": [{ "sessionCookie": [] }]
 }

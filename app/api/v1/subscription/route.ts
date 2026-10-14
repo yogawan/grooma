@@ -1,11 +1,7 @@
 // @/app/api/v1/subscription/route.ts
 import type { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/authorization";
-import {
-  successResponse,
-  withErrorHandling,
-  zodErrorToAppError,
-} from "@/lib/errors";
+import { successResponse, withErrorHandling } from "@/lib/errors";
 import { getSubscriptionByHostId } from "@/services/subscription.service";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {

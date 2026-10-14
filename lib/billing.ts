@@ -1,5 +1,4 @@
 // @/lib/billing.ts
-import type { ISubscriptionPlan } from "@/models/SubscriptionPlan";
 
 export const SUBSCRIPTION_ORDER_ID_PREFIX = "GRM-SUB";
 export const TRANSACTION_ORDER_ID_PREFIX = "GRM";

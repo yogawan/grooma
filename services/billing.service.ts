@@ -5,13 +5,11 @@ import {
   calculateNextBillingPeriod,
   generateInvoiceCode,
   calculateGracePeriodEnd,
-  determineSubscriptionStatus,
   isSubscriptionOrderId,
 } from "@/lib/billing";
 import { createQrisCharge, getTransactionStatus } from "@/lib/midtrans";
 import SubscriptionModel from "@/models/Subscription";
 import SubscriptionInvoiceModel from "@/models/SubscriptionInvoice";
-import SubscriptionPlanModel from "@/models/SubscriptionPlan";
 
 export async function generateSubscriptionInvoice(
   subscriptionId: string,

@@ -1,5 +1,5 @@
 // @/models/Service.ts
-import mongoose, { Schema, model, models } from "mongoose";
+import { Schema, model, models } from "mongoose";
 
 const ServiceSchema = new Schema(
   {

@@ -1,9 +1,10 @@
 // @/services/subscription.service.ts
-import { connectDB } from "@/lib/mongodb";
+import type { ISubscription } from "@/models/Subscription";
+import type { ISubscriptionPlan } from "@/models/SubscriptionPlan";
 import { Errors } from "@/lib/errors";
+import { connectDB } from "@/lib/mongodb";
 import SubscriptionModel from "@/models/Subscription";
 import SubscriptionPlanModel from "@/models/SubscriptionPlan";
-import UserModel from "@/models/User";
 import type {
   CreateSubscriptionPlanInput,
   UpdateSubscriptionPlanInput,
@@ -11,9 +12,19 @@ import type {
   ListSubscriptionsQuery,
 } from "@/validations/subscription.schema";
 
+interface SubscriptionsListResponse {
+  subscriptions: ISubscription[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}
+
 export async function createSubscriptionPlan(
   input: CreateSubscriptionPlanInput,
-): Promise<any> {
+): Promise<ISubscriptionPlan> {
   await connectDB();
 
   // Check if code already exists
@@ -33,7 +44,7 @@ export async function createSubscriptionPlan(
 export async function updateSubscriptionPlan(
   planId: string,
   input: UpdateSubscriptionPlanInput,
-): Promise<any> {
+): Promise<ISubscriptionPlan> {
   await connectDB();
 
   const plan = await SubscriptionPlanModel.findById(planId);
@@ -47,7 +58,9 @@ export async function updateSubscriptionPlan(
   return plan.toObject();
 }
 
-export async function getSubscriptionPlan(planId: string): Promise<any> {
+export async function getSubscriptionPlan(
+  planId: string,
+): Promise<ISubscriptionPlan> {
   await connectDB();
 
   const plan = await SubscriptionPlanModel.findById(planId);
@@ -60,7 +73,7 @@ export async function getSubscriptionPlan(planId: string): Promise<any> {
 
 export async function listSubscriptionPlans(
   isActive?: boolean,
-): Promise<any[]> {
+): Promise<ISubscriptionPlan[]> {
   await connectDB();
 
   const query: Record<string, unknown> = {};
@@ -73,7 +86,9 @@ export async function listSubscriptionPlans(
   return plans.map((p) => p.toObject());
 }
 
-export async function getSubscriptionByHostId(hostId: string): Promise<any> {
+export async function getSubscriptionByHostId(
+  hostId: string,
+): Promise<ISubscription | null> {
   await connectDB();
 
   const subscription = await SubscriptionModel.findOne({ host: hostId })
@@ -89,7 +104,7 @@ export async function getSubscriptionByHostId(hostId: string): Promise<any> {
 
 export async function getSubscriptionById(
   subscriptionId: string,
-): Promise<any> {
+): Promise<ISubscription> {
   await connectDB();
 
   const subscription = await SubscriptionModel.findById(subscriptionId)
@@ -105,7 +120,7 @@ export async function getSubscriptionById(
 
 export async function listSubscriptions(
   query: ListSubscriptionsQuery,
-): Promise<{ subscriptions: any[]; pagination: any }> {
+): Promise<SubscriptionsListResponse> {
   await connectDB();
 
   const filter: Record<string, unknown> = {};
@@ -142,7 +157,7 @@ export async function listSubscriptions(
 export async function updateSubscriptionStatus(
   subscriptionId: string,
   input: UpdateSubscriptionStatusInput,
-): Promise<any> {
+): Promise<ISubscription> {
   await connectDB();
 
   const subscription = await SubscriptionModel.findById(subscriptionId);

@@ -1,19 +1,26 @@
 // @/services/billing.service.ts
-import { connectDB } from "@/lib/mongodb";
-import { Errors } from "@/lib/errors";
+import type { ISubscriptionInvoice } from "@/models/SubscriptionInvoice";
 import {
   calculateNextBillingPeriod,
   generateInvoiceCode,
-  calculateGracePeriodEnd,
   isSubscriptionOrderId,
 } from "@/lib/billing";
+import { Errors } from "@/lib/errors";
 import { createQrisCharge, getTransactionStatus } from "@/lib/midtrans";
-import SubscriptionModel from "@/models/Subscription";
+import { connectDB } from "@/lib/mongodb";
 import SubscriptionInvoiceModel from "@/models/SubscriptionInvoice";
+import SubscriptionModel from "@/models/Subscription";
+
+interface PaginationInfo {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+}
 
 export async function generateSubscriptionInvoice(
   subscriptionId: string,
-): Promise<any> {
+): Promise<ISubscriptionInvoice> {
   await connectDB();
 
   const subscription =
@@ -39,9 +46,6 @@ export async function generateSubscriptionInvoice(
   // Calculate due date (typically immediate or a few days later)
   const dueAt = new Date();
   dueAt.setDate(dueAt.getDate() + 3); // Due in 3 days
-
-  // Calculate grace period end
-  const graceEndsAt = calculateGracePeriodEnd(dueAt, plan.graceDays);
 
   // Create QRIS charge with Midtrans
   let qrCodeUrl: string | null = null;
@@ -86,7 +90,9 @@ export async function generateSubscriptionInvoice(
   return invoice.toObject();
 }
 
-export async function getInvoiceById(invoiceId: string): Promise<any> {
+export async function getInvoiceById(
+  invoiceId: string,
+): Promise<ISubscriptionInvoice | null> {
   await connectDB();
 
   const invoice = await SubscriptionInvoiceModel.findById(invoiceId)
@@ -104,7 +110,7 @@ export async function listInvoicesBySubscription(
   subscriptionId: string,
   page: number = 1,
   limit: number = 20,
-): Promise<{ invoices: any[]; pagination: any }> {
+): Promise<{ invoices: ISubscriptionInvoice[]; pagination: PaginationInfo }> {
   await connectDB();
 
   const skip = (page - 1) * limit;

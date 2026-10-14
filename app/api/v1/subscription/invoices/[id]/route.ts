@@ -17,9 +17,12 @@ export const GET = withErrorHandling<{ id: string }>(
     }
 
     const invoice = await getInvoiceById(id);
+    if (!invoice) {
+      throw new Error("NOT_FOUND");
+    }
 
     // Verify invoice belongs to user's subscription
-    if (String(invoice.subscription._id) !== String(subscription._id)) {
+    if (String(invoice.subscription) !== String(subscription._id)) {
       throw new Error("FORBIDDEN");
     }
 

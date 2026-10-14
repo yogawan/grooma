@@ -2,7 +2,7 @@
 import { Schema, model, models } from "mongoose";
 import type { Document } from "mongoose";
 
-interface ISubscription extends Document {
+export interface ISubscription extends Document {
   host: Schema.Types.ObjectId;
   plan: Schema.Types.ObjectId;
   status: "ACTIVE" | "PAST_DUE" | "EXPIRED" | "CANCELLED";

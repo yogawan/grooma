@@ -2,7 +2,7 @@
 import { Schema, model, models } from "mongoose";
 import type { Document } from "mongoose";
 
-interface ISubscriptionInvoice extends Document {
+export interface ISubscriptionInvoice extends Document {
   subscription: Schema.Types.ObjectId;
   host: Schema.Types.ObjectId;
   invoiceCode: string;

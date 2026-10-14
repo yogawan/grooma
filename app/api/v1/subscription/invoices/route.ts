@@ -32,7 +32,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   }
 
   const result = await listInvoicesBySubscription(
-    subscription._id,
+    String(subscription._id),
     parsed.data.page,
     parsed.data.limit,
   );

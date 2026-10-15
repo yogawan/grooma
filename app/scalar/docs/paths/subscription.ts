@@ -120,9 +120,13 @@ export const subscriptionPaths = {
           },
         },
         "401": { description: "Not authenticated" },
-        "500": {
+        "403": {
           description:
-            "Known bug: the HOST has no subscription, the invoice doesn't exist, or it belongs to a different HOST's subscription. This route throws a plain Error rather than an AppError for these three cases, so handleApiError's generic fallback returns 500 INTERNAL_ERROR instead of the intended 404/403.",
+            "The invoice exists but belongs to a different HOST's subscription.",
+        },
+        "404": {
+          description:
+            "The HOST has no subscription yet, or the invoice doesn't exist.",
         },
       },
     },

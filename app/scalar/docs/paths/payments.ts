@@ -47,6 +47,7 @@ export const paymentPaths = {
         },
         "400": { description: "Validation error" },
         "401": { description: "Not authenticated" },
+        "402": { $ref: "#/components/responses/SubscriptionRequired" },
         "403": { description: "Not AGENT, or different branch" },
         "404": { description: "Transaction not found" },
         "409": {
@@ -70,6 +71,7 @@ export const paymentPaths = {
       responses: {
         "200": { description: "Payment detail", content: paymentResponse },
         "401": { description: "Not authenticated" },
+        "402": { $ref: "#/components/responses/SubscriptionRequired" },
         "403": { description: "Different branch" },
         "404": { description: "Payment not found" },
       },

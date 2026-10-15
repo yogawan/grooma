@@ -51,6 +51,7 @@ export const branchPaths = {
           },
         },
         "401": { description: "Not authenticated" },
+        "402": { $ref: "#/components/responses/SubscriptionRequired" },
       },
     },
     post: {
@@ -82,6 +83,7 @@ export const branchPaths = {
         "201": { description: "Branch created", content: branchResponse },
         "400": { description: "Validation error" },
         "401": { description: "Not authenticated" },
+        "402": { $ref: "#/components/responses/SubscriptionRequired" },
         "403": { description: "Not HOST" },
         "409": { description: "branchCode already exists" },
       },
@@ -96,6 +98,7 @@ export const branchPaths = {
       responses: {
         "200": { description: "Branch detail", content: branchResponse },
         "401": { description: "Not authenticated" },
+        "402": { $ref: "#/components/responses/SubscriptionRequired" },
         "403": {
           description: "AGENT requesting a branch other than their own",
         },
@@ -127,6 +130,7 @@ export const branchPaths = {
         "200": { description: "Branch updated", content: branchResponse },
         "400": { description: "Validation error" },
         "401": { description: "Not authenticated" },
+        "402": { $ref: "#/components/responses/SubscriptionRequired" },
         "403": { description: "Not HOST" },
         "404": { description: "Branch not found" },
       },
@@ -156,6 +160,7 @@ export const branchPaths = {
         "200": { description: "Status updated", content: branchResponse },
         "400": { description: "Validation error" },
         "401": { description: "Not authenticated" },
+        "402": { $ref: "#/components/responses/SubscriptionRequired" },
         "403": { description: "Not HOST" },
         "404": { description: "Branch not found" },
       },

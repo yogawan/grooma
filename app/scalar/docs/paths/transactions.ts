@@ -114,6 +114,7 @@ export const transactionPaths = {
         },
         "400": { description: "Validation error" },
         "401": { description: "Not authenticated" },
+        "402": { $ref: "#/components/responses/SubscriptionRequired" },
         "403": { description: "Not HOST/AGENT" },
       },
     },
@@ -181,6 +182,7 @@ export const transactionPaths = {
         },
         "400": { description: "Validation error" },
         "401": { description: "Not authenticated" },
+        "402": { $ref: "#/components/responses/SubscriptionRequired" },
         "403": { description: "Not AGENT" },
         "422": {
           description:
@@ -202,6 +204,7 @@ export const transactionPaths = {
           content: transactionResponse,
         },
         "401": { description: "Not authenticated" },
+        "402": { $ref: "#/components/responses/SubscriptionRequired" },
         "403": { description: "AGENT from a different branch" },
         "404": { description: "Transaction not found" },
       },
@@ -221,6 +224,7 @@ export const transactionPaths = {
           content: transactionResponse,
         },
         "401": { description: "Not authenticated" },
+        "402": { $ref: "#/components/responses/SubscriptionRequired" },
         "403": { description: "Not AGENT, or different branch" },
         "404": { description: "Transaction not found" },
         "409": { description: "Transaction is already CANCELLED or COMPLETED" },
@@ -241,6 +245,7 @@ export const transactionPaths = {
           content: transactionResponse,
         },
         "401": { description: "Not authenticated" },
+        "402": { $ref: "#/components/responses/SubscriptionRequired" },
         "403": { description: "Different branch" },
         "404": { description: "Transaction not found" },
         "409": { description: "Transaction is already CANCELLED or COMPLETED" },
@@ -259,6 +264,7 @@ export const transactionPaths = {
       responses: {
         "200": { description: "Receipt data", content: transactionResponse },
         "401": { description: "Not authenticated" },
+        "402": { $ref: "#/components/responses/SubscriptionRequired" },
         "403": { description: "Different branch" },
         "404": { description: "Transaction not found" },
       },
@@ -306,6 +312,7 @@ export const transactionPaths = {
         },
         "400": { description: "Validation error" },
         "401": { description: "Not authenticated" },
+        "402": { $ref: "#/components/responses/SubscriptionRequired" },
         "403": { description: "Different branch" },
         "404": { description: "Transaction not found" },
         "409": {

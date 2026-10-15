@@ -14,6 +14,16 @@ export const securitySchemes = {
   },
 };
 
+// requireAuth (lib/authorization.ts) enforces this by default on every
+// endpoint — only the handful marked subscriptionExempt there (profile,
+// auth/me, change-password, /subscription*) never return it.
+export const responses = {
+  SubscriptionRequired: {
+    description:
+      "HOST's subscription is PAST_DUE, EXPIRED, or CANCELLED (§23.4). AGENT is never blocked.",
+  },
+};
+
 // Every success response is `{ success: true, data: <one of the schemas
 // below> }` (see lib/errors.ts successResponse) — individual paths wrap
 // these schemas in that envelope rather than repeating it per-operation.
@@ -27,7 +37,7 @@ export const ErrorSchema = {
         code: {
           type: "string",
           description:
-            "UNAUTHENTICATED | INVALID_CREDENTIALS | ACCOUNT_INACTIVE | FORBIDDEN | VALIDATION_ERROR | NOT_FOUND | CONFLICT | BUSINESS_RULE_VIOLATION | RATE_LIMITED | PAYMENT_GATEWAY_ERROR | INTERNAL_ERROR",
+            "UNAUTHENTICATED | INVALID_CREDENTIALS | ACCOUNT_INACTIVE | FORBIDDEN | VALIDATION_ERROR | NOT_FOUND | CONFLICT | BUSINESS_RULE_VIOLATION | PAYMENT_REQUIRED | RATE_LIMITED | PAYMENT_GATEWAY_ERROR | INTERNAL_ERROR",
         },
         message: { type: "string" },
       },

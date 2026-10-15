@@ -3,7 +3,7 @@ import { ApiReference } from "@scalar/nextjs-api-reference";
 import { notFound } from "next/navigation";
 import type { NextRequest } from "next/server";
 import { info, security, servers, tags } from "./_config";
-import { schemas, securitySchemes } from "./_schemas";
+import { responses, schemas, securitySchemes } from "./_schemas";
 import { authPaths } from "./paths/auth";
 import { branchPaths } from "./paths/branches";
 import { customerPaths } from "./paths/customers";
@@ -26,7 +26,7 @@ const specHandler = ApiReference({
     servers,
     security,
     tags,
-    components: { securitySchemes, schemas },
+    components: { securitySchemes, schemas, responses },
     paths: {
       ...authPaths,
       ...profilePaths,

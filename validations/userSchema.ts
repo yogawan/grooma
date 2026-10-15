@@ -15,8 +15,6 @@ export const createUserSchema = z
     role: assignableRole,
     branch: z.string().nullable().optional(),
     phone: z.string().trim().max(32).optional(),
-    address: z.string().trim().max(255).optional(),
-    photoUrl: z.string().trim().max(2048).optional(),
   })
   .strict();
 export type CreateUserInput = z.infer<typeof createUserSchema>;
@@ -29,8 +27,6 @@ export const updateUserSchema = z
     role: assignableRole.optional(),
     branch: z.string().nullable().optional(),
     phone: z.string().trim().max(32).optional(),
-    address: z.string().trim().max(255).optional(),
-    photoUrl: z.string().trim().max(2048).optional(),
   })
   .strict();
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
@@ -47,8 +43,6 @@ export const updateProfileSchema = z
   .object({
     name: z.string().trim().min(1).max(100).optional(),
     phone: z.string().trim().max(32).optional(),
-    address: z.string().trim().max(255).optional(),
-    photoUrl: z.string().trim().max(2048).optional(),
   })
   .strict();
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;

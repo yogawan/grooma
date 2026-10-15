@@ -38,19 +38,16 @@ interface SerializableUser {
   role: string;
   branch?: PopulatedBranch | null;
   phone?: string | null;
-  address?: string | null;
-  photoUrl?: string | null;
   status: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
-// Password hash is never selected by default (schema: select:false), and
-// `compensation` — sensitive payroll data not part of the PRD's documented
-// User fields (§3.1) — is deliberately left out of this projection too.
-// The cast reflects that every call site below has already run
-// .populate("branch", "name"), which the installed Mongoose version's types
-// don't thread through query chains precisely enough to infer on their own.
+// Password hash is never selected by default (schema: select:false), so it
+// cannot leak through here. The cast reflects that every call site below has
+// already run .populate("branch", "name"), which the installed Mongoose
+// version's types don't thread through query chains precisely enough to infer
+// on their own.
 function serializeUser(user: unknown) {
   const u = user as SerializableUser;
   const branch = u.branch ?? null;
@@ -62,8 +59,6 @@ function serializeUser(user: unknown) {
     role: u.role,
     branch: branch ? { id: branch._id.toString(), name: branch.name } : null,
     phone: u.phone ?? null,
-    address: u.address ?? null,
-    photoUrl: u.photoUrl ?? null,
     status: u.status,
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
@@ -93,8 +88,6 @@ export async function createUser(input: CreateUserInput) {
     role: input.role,
     branch: input.branch ?? null,
     phone: input.phone,
-    address: input.address,
-    photoUrl: input.photoUrl,
   });
 
   await user.populate("branch", "name");
@@ -135,8 +128,6 @@ export async function updateUser(id: string, input: UpdateUserInput) {
   if (input.name !== undefined) user.name = input.name;
   if (input.role !== undefined) user.role = input.role;
   if (input.phone !== undefined) user.phone = input.phone;
-  if (input.address !== undefined) user.address = input.address;
-  if (input.photoUrl !== undefined) user.photoUrl = input.photoUrl;
 
   if ("branch" in input) {
     if (input.branch) {
@@ -192,8 +183,6 @@ export async function updateOwnProfile(
 
   if (input.name !== undefined) user.name = input.name;
   if (input.phone !== undefined) user.phone = input.phone;
-  if (input.address !== undefined) user.address = input.address;
-  if (input.photoUrl !== undefined) user.photoUrl = input.photoUrl;
 
   await user.save();
   await user.populate("branch", "name");

@@ -46,40 +46,10 @@ const UserSchema = new Schema(
       trim: true,
     },
 
-    address: {
-      type: String,
-      trim: true,
-    },
-
-    photoUrl: {
-      type: String,
-      trim: true,
-    },
-
     status: {
       type: String,
       enum: ["ACTIVE", "INACTIVE"],
       default: "ACTIVE",
-    },
-
-    compensation: {
-      regularSalary: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      overtimeRate: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      compensationType: {
-        type: String,
-        enum: ["FIXED", "COMMISSION", "HYBRID"],
-        default: "COMMISSION",
-      },
     },
   },
   {

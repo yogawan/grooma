@@ -20,7 +20,7 @@ Repo saat ini adalah hasil `create-next-app` + beberapa model Mongoose yang suda
 | `models/Inventory.ts` | field `branch` wajib untuk isolasi cabang (§5.6) | Field `branch` **tidak ada** | Tambahkan — Phase 1/4 |
 | `models/Payment.ts` | direkomendasikan collection terpisah (§5.9) | Tidak ada | Buat baru — Phase 3 |
 | `models/InventoryMovement.ts` | direkomendasikan untuk audit stok (§5.7) | Tidak ada | Buat baru — Phase 4 |
-| `models/Attendance.ts` | **out of scope MVP** (§4, §20) | Sudah ada (termasuk `ref: "Employee"` yang sama-sama invalid) | Biarkan apa adanya, jangan dikembangkan/di-wire ke API selama MVP ini |
+| `models/Attendance.ts` | **out of scope MVP** (§4, §20) | Sudah ada (termasuk `ref: "Employee"` yang sama-sama invalid) | Biarkan apa adanya, jangan dikembangkan/di-wire ke API selama MVP ini. *`ref: "Employee"` kini resolve ke `models/Employee.ts` (dibuat sebagai scaffold sesuai PRD §5.13) — tidak lagi dangling, tapi belum dibaca/ditulis service atau route manapun. Tetap jangan di-wire ke Attendance selama MVP.* |
 | `app/api/v1/*` | seluruh endpoint §7 | **Tidak ada** sama sekali, hanya default page bawaan `create-next-app` | Bangun bertahap mulai Phase 1 |
 | `lib/`, `services/`, `validations/`, `types/` | struktur §17 | Tidak ada | Bangun bertahap sesuai phase |
 | `models/SubscriptionPlan.ts`, `Subscription.ts`, `SubscriptionInvoice.ts` | wajib untuk modul Subscription & Billing (PRD §5.10–§5.12, §23) | Tidak ada | Buat baru — Phase 8 |

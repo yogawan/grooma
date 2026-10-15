@@ -99,6 +99,8 @@ Field utama:
 - `createdAt`
 - `updatedAt`
 
+Daftar ini adalah field **akun** dan merupakan kontrak yang dipakai endpoint `/users` dan `/profile`. Data payroll (`compensation`) sengaja tidak ada di sini meskipun hadir pada schema — lihat §5.1. Pemisahan data kepegawaian ke model `Employee` tersendiri sudah dirancang dan belum diimplementasikan (§5.13).
+
 ### Role Definition
 
 `HOST`
@@ -253,7 +255,7 @@ Seluruh model menggunakan `timestamps: true` kecuali terdapat kebutuhan khusus.
 
 ## 5.1. User
 
-Menyimpan akun dan informasi pegawai.
+Menyimpan **akun** — identitas login, role, dan status. Untuk MVP, model ini juga masih memuat data kepegawaian (`branch`, `compensation`); pemisahannya ke model `Employee` tersendiri sudah dirancang tetapi belum diimplementasikan — lihat §5.13.
 
 Field:
 - `_id`
@@ -261,12 +263,12 @@ Field:
 - `password`: password hash, tidak disertakan dalam query biasa
 - `name`
 - `role`: `HOST | AGENT`
-- `branch`: reference ke Branch, wajib untuk AGENT
+- `branch`: reference ke Branch, wajib untuk AGENT. *Data kepegawaian; akan pindah ke `Employee` (§5.13).*
 - `phone`
 - `address`
 - `photoUrl`
-- `status`: `ACTIVE | INACTIVE`
-- `compensation`
+- `status`: `ACTIVE | INACTIVE` — status **akun** (boleh login atau tidak), bukan status kepegawaian
+- `compensation`: `regularSalary`, `overtimeRate`, `compensationType` (`FIXED | COMMISSION | HYBRID`). **Transisional dan belum dipakai** — lihat catatan di bawah dan §5.13.
 - `createdAt`
 - `updatedAt`
 
@@ -277,6 +279,8 @@ Aturan:
 - AGENT wajib memiliki cabang aktif.
 - Akun INACTIVE tidak dapat melakukan login.
 - Role dan branch assignment hanya dapat diubah oleh HOST yang berwenang.
+
+**Catatan tentang `compensation`.** Field ini ada pada schema tetapi **tidak pernah dibaca maupun ditulis** oleh modul manapun di backend ini, dan sengaja tidak disertakan pada response endpoint `/users` maupun `/profile`: data payroll tidak termasuk field yang didokumentasikan pada §3.1, dan tidak seharusnya ikut terkirim bersama data akun. Field ini adalah sisa rancangan awal yang mengantisipasi modul payroll (§20). Tempatnya yang benar adalah `Employee` (§5.13); sampai pemisahan itu dilakukan, perlakukan `compensation` sebagai **deprecated in place** — jangan dijadikan sumber data untuk fitur baru.
 
 ## 5.2. Branch
 
@@ -582,6 +586,77 @@ Aturan:
 - `providerOrderId` harus unik dan menggunakan prefix pembeda dari order ID transaksi POS agar notifikasi webhook tidak salah rute (lihat §9.5).
 - Invoice baru hanya diterbitkan ketika periode sebelumnya berakhir dan tidak ada invoice `PENDING` lain yang aktif untuk `Subscription` yang sama.
 - Status pembayaran hanya berubah melalui notifikasi Midtrans yang terverifikasi, mengikuti aturan yang sama dengan §9.
+
+## 5.13. Employee — *Scaffold dibuat, migrasi belum dieksekusi*
+
+> **Status: scaffold only.** `models/Employee.ts` sudah dibuat dan bentuknya cocok dengan rancangan di bawah, tetapi **tidak dibaca maupun ditulis oleh service atau route manapun**. Seluruh data kepegawaian yang benar-benar dipakai hari ini — `branch`, `compensation` — masih sepenuhnya berada di `User` (§5.1), persis seperti sebelum file ini dibuat. Ini adalah langkah "expand" pertama dari pola expand–migrate–contract di bagian "Prasyarat" di bawah: aditif murni, reversible, nol perubahan behavior. Bagian ini mendokumentasikan pemisahan yang sudah diputuskan beserta pemicu dan prasyaratnya, supaya keputusannya tidak perlu diturunkan ulang dari awal nanti. **Jangan migrasikan field secara sebagian** — lihat "Prasyarat" di bawah.
+
+### Masalah yang dipisahkan
+
+`User` saat ini menggabungkan empat hal yang berbeda umur dan berbeda pemilik:
+
+| Concern | Field | Pemilik |
+|---|---|---|
+| Identitas login | `username`, `password`, `role`, `status` | Akun |
+| Profil orang | `name`, `phone`, `address`, `photoUrl` | Akun |
+| Penugasan organisasi | `branch` | Kepegawaian |
+| Payroll | `compensation.*` | Kepegawaian |
+
+Dua baris terakhir bukan properti sebuah *akun*, melainkan properti sebuah *hubungan kerja*. Konsekuensinya sudah terlihat hari ini: `compensation` ikut tersimpan pada dokumen yang sama dengan password hash, dan §5.1 harus menjelaskan bahwa `status` berarti status akun, bukan status pegawai — ambiguitas yang hilang sendiri begitu kedua entitas dipisah.
+
+### Rancangan model
+
+`User` (§5.1) dipersempit menjadi akun murni: `username`, `password`, `name`, `role`, `status`, timestamps.
+
+`Employee` menjadi catatan kepegawaian, **1:1 opsional** terhadap `User`:
+
+- `_id`
+- `user`: reference ke User, **unique** (satu catatan kepegawaian per akun)
+- `branch`: reference ke Branch, wajib
+- `compensation.regularSalary`
+- `compensation.overtimeRate`
+- `compensation.compensationType`: `FIXED | COMMISSION | HYBRID`
+- `employmentStatus`: `ACTIVE | RESIGNED | SUSPENDED` — terpisah dari `User.status`
+- `joinedAt`
+- `resignedAt`
+- `createdAt`
+- `updatedAt`
+
+Aturan:
+- Relasi bersifat **opsional**: sebuah akun boleh tidak memiliki `Employee`.
+- AGENT wajib memiliki `Employee` dengan `branch` yang valid (menggantikan validasi `pre("validate")` pada §5.1 hari ini).
+- HOST boleh tidak memiliki `Employee` — perannya lintas cabang, bukan penugasan satu cabang.
+- `User.status` mengatur **boleh login atau tidak**; `Employee.employmentStatus` mengatur **masih bekerja atau tidak**. Pegawai yang resign umumnya `employmentStatus: RESIGNED` **dan** `User.status: INACTIVE`, tetapi keduanya tidak saling memaksa.
+- Data payroll tidak boleh ikut pada response endpoint akun manapun, sama seperti aturan yang berlaku sekarang (§5.1).
+
+### Mengapa ini memperkuat batas §3.6
+
+Hari ini, isolasi role platform ditegakkan dengan *allowlist* enum (`HOST`/`AGENT`) karena baris `GROOMA_ADMIN` memang hadir di koleksi `users` yang dibagi dengan backend admin. Dengan pemisahan ini, batas tersebut menjadi **struktural**: `GROOMA_ADMIN` adalah akun yang **tidak memiliki catatan `Employee`** — persis seperti yang §3.1 sudah nyatakan ("tidak terasosiasi dengan cabang manapun"). Allowlist tetap diperlukan untuk session, tetapi penyaringan data operasional tidak lagi bergantung pada enum role.
+
+### Relasi dengan `Attendance`
+
+`models/Attendance.ts` memakai `ref: "Employee"` yang sebelumnya menunjuk model yang belum eksis — tercatat di `docs/PLAN-GROOMA.md` sebagai dangling reference yang sengaja dibiarkan karena attendance di luar scope MVP (§4, §20). Referensi ini sekarang resolve ke `models/Employee.ts` yang sudah dibuat sebagai scaffold (lihat status di atas). **Ini tidak mengubah status Attendance** — modul ini tetap tidak boleh diberi service maupun route sampai salah satu pemicu di bawah masuk scope.
+
+### Pemicu implementasi
+
+Pemisahan ini dikerjakan ketika **salah satu** dari berikut masuk scope:
+
+1. **Modul Attendance** (§20) — butuh entitas yang bisa direferensikan per hari kerja.
+2. **Payroll automation** (§20) — butuh `compensation` sebagai data hidup, bukan field mati.
+3. **Riwayat kepegawaian** — kebutuhan mencatat pegawai yang pindah cabang atau resign lalu bergabung kembali, yang tidak dapat diwakili oleh satu field `branch` tunggal.
+
+Selama ketiganya di luar scope, pemisahan ini **tidak memberi manfaat fungsional**: `compensation` tidak terpakai, dan setiap akun operasional tetap punya tepat satu cabang. Mengerjakannya lebih awal hanya menambah satu join tanpa menambah kemampuan.
+
+### Prasyarat — baca sebelum mulai
+
+Ini **bukan** refactor lokal. Empat hal berikut wajib diperhitungkan:
+
+1. **Migrasi lintas repo.** Koleksi `users` dibagi dengan backend admin yang menulis baris `GROOMA_ADMIN` (§3.6). Memindahkan field keluar dari `users` adalah *breaking change* bagi codebase tersebut dan harus dikoordinasikan, bukan dirilis sepihak.
+2. **Biaya hot path session.** Validasi session membaca `branch` dari dokumen user pada **setiap request terautentikasi**. Bila `branch` pindah ke `Employee`, dibutuhkan query kedua, `$lookup`, atau denormalisasi `branch` yang disengaja ke `User`. Putuskan ini di awal desain, bukan setelah implementasi.
+3. **Arah referensi yang sudah ada.** Dari 11 referensi `ref: "User"` pada 7 model, **10 di antaranya bersemantik aktor/audit** (`Session`, `IdempotencyKey`, `InventoryMovement`, ketiga model subscription, dan 4 referensi audit pada `Transaction`) dan **harus tetap menunjuk `User`** — yang melakukan tindakan adalah akun, bukan catatan kepegawaian. Hanya `Transaction.agent` yang dapat diperdebatkan, karena pihak itulah yang memperoleh `employeeRevenue`.
+4. **Preseden yang berlawanan arah.** `docs/PLAN-GROOMA.md` mencatat bahwa `Transaction` semula memakai `employee` + `ref: "Employee"` dan Phase 1 **sengaja** mengubahnya menjadi `agent` + `ref: "User"` karena model `Employee` tidak eksis. Mengubah `Transaction.agent` kembali berarti membalik keputusan yang sudah dipertimbangkan — lakukan hanya bila poin 3 benar-benar menuntutnya, dan catat alasannya.
+
+Pendekatan migrasi yang disarankan: **expand–migrate–contract**. Tambahkan `Employee` dan tulis ganda, pindahkan pembaca satu per satu, baru hapus field lama dari `User` setelah backend admin ikut diperbarui. Jangan pindahkan dan hapus dalam satu rilis.
 
 ---
 
@@ -1428,6 +1503,7 @@ Fitur berikut tidak termasuk implementasi awal:
 - Fingerprint attendance.
 - Attendance management.
 - Payroll automation.
+- Pemisahan model `User` menjadi `User` + `Employee` — sudah dirancang di §5.13, tetapi dikerjakan bersama modul Attendance atau Payroll di atas, bukan sebelumnya.
 - Customer booking and appointment scheduling.
 - Loyalty point redemption.
 - Automatic stock deduction based on service consumption.

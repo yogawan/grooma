@@ -32,7 +32,7 @@ export const profilePaths = {
       operationId: "updateOwnProfile",
       summary: "Update the current user's own profile",
       description:
-        "name/phone/address/photoUrl only — role, branch, username, and status can never be changed through this endpoint.",
+        "name/phone only — role, branch, username, and status can never be changed through this endpoint.",
       requestBody: {
         required: true,
         content: {
@@ -42,8 +42,6 @@ export const profilePaths = {
               properties: {
                 name: { type: "string", minLength: 1, maxLength: 100 },
                 phone: { type: "string", maxLength: 32 },
-                address: { type: "string", maxLength: 255 },
-                photoUrl: { type: "string", maxLength: 2048 },
               },
             },
           },

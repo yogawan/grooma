@@ -139,8 +139,6 @@ export const User = {
       },
     },
     phone: { type: "string", nullable: true },
-    address: { type: "string", nullable: true },
-    photoUrl: { type: "string", nullable: true },
     status: { type: "string", enum: ["ACTIVE", "INACTIVE"] },
     createdAt: { type: "string", format: "date-time" },
     updatedAt: { type: "string", format: "date-time" },

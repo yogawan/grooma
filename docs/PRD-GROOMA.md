@@ -93,13 +93,15 @@ Field utama:
 - `role`
 - `branch`
 - `phone`
-- `address`
-- `photoUrl`
 - `status`
 - `createdAt`
 - `updatedAt`
 
-Daftar ini adalah field **akun** dan merupakan kontrak yang dipakai endpoint `/users` dan `/profile`. Data payroll (`compensation`) sengaja tidak ada di sini meskipun hadir pada schema — lihat §5.1. Pemisahan data kepegawaian ke model `Employee` tersendiri sudah dirancang dan belum diimplementasikan (§5.13).
+Daftar ini adalah field **akun** dan merupakan kontrak yang dipakai endpoint `/users` dan `/profile` — tidak ada field lain pada model `User`.
+
+Setiap field di atas dipakai oleh logic, bukan hanya disimpan: `username`/`password` untuk login, `role` untuk otorisasi (`requireRole`), `status` untuk gating login, `name` dan `branch` ikut pada session user, dan `branch` menjadi dasar branch-based authorization (§3.3). `phone` adalah satu-satunya field kontak yang dipertahankan, untuk kebutuhan menghubungi staf.
+
+Field `address`, `photoUrl`, dan `compensation` **sudah dihapus** dari model ini. Tiga-tiganya tidak pernah dibaca oleh logic manapun — `address` dan `photoUrl` hanya disimpan lalu dikembalikan apa adanya (dan tidak ada mekanisme upload file di backend ini yang membuat `photoUrl` berguna), sementara `compensation` adalah data payroll yang tempatnya di `Employee` (§5.13). Lihat §5.1 untuk konsekuensinya terhadap klien.
 
 ### Role Definition
 
@@ -255,7 +257,7 @@ Seluruh model menggunakan `timestamps: true` kecuali terdapat kebutuhan khusus.
 
 ## 5.1. User
 
-Menyimpan **akun** — identitas login, role, dan status. Untuk MVP, model ini juga masih memuat data kepegawaian (`branch`, `compensation`); pemisahannya ke model `Employee` tersendiri sudah dirancang tetapi belum diimplementasikan — lihat §5.13.
+Menyimpan **akun** — identitas login, role, status, dan penugasan cabang. Untuk MVP, `branch` masih berada di model ini; pemisahannya ke model `Employee` tersendiri sudah dirancang tetapi belum diimplementasikan — lihat §5.13.
 
 Field:
 - `_id`
@@ -265,12 +267,11 @@ Field:
 - `role`: `HOST | AGENT`
 - `branch`: reference ke Branch, wajib untuk AGENT. *Data kepegawaian; akan pindah ke `Employee` (§5.13).*
 - `phone`
-- `address`
-- `photoUrl`
 - `status`: `ACTIVE | INACTIVE` — status **akun** (boleh login atau tidak), bukan status kepegawaian
-- `compensation`: `regularSalary`, `overtimeRate`, `compensationType` (`FIXED | COMMISSION | HYBRID`). **Transisional dan belum dipakai** — lihat catatan di bawah dan §5.13.
 - `createdAt`
 - `updatedAt`
+
+Model ini sengaja dijaga tetap sempit: setiap field di atas dibaca oleh logic (lihat §3.1), bukan sekadar disimpan dan dikembalikan.
 
 Aturan:
 - Username harus unik.
@@ -280,7 +281,9 @@ Aturan:
 - Akun INACTIVE tidak dapat melakukan login.
 - Role dan branch assignment hanya dapat diubah oleh HOST yang berwenang.
 
-**Catatan tentang `compensation`.** Field ini ada pada schema tetapi **tidak pernah dibaca maupun ditulis** oleh modul manapun di backend ini, dan sengaja tidak disertakan pada response endpoint `/users` maupun `/profile`: data payroll tidak termasuk field yang didokumentasikan pada §3.1, dan tidak seharusnya ikut terkirim bersama data akun. Field ini adalah sisa rancangan awal yang mengantisipasi modul payroll (§20). Tempatnya yang benar adalah `Employee` (§5.13); sampai pemisahan itu dilakukan, perlakukan `compensation` sebagai **deprecated in place** — jangan dijadikan sumber data untuk fitur baru.
+**Catatan: `address`, `photoUrl`, dan `compensation` sudah dihapus.** Ketiganya pernah ada pada model ini dan tidak pernah dibaca oleh logic manapun. `address`/`photoUrl` murni *pass-through* — diterima pada input, disimpan, lalu dikembalikan pada response, tanpa satu pun keputusan otorisasi, struk, dashboard, atau notifikasi yang memakainya; `photoUrl` juga tidak akan pernah berguna selama backend ini tidak punya mekanisme upload file (field itu hanya string). `compensation` adalah data payroll yang sejak awal tidak pernah dibaca/ditulis dan tidak pernah disertakan pada response; tempatnya yang benar adalah `Employee` (§5.13), dan model itu sudah mendeklarasikannya.
+
+**Konsekuensi untuk klien (breaking change).** Schema input memakai `.strict()` (`validations/userSchema.ts`), sehingga ketiga field itu **ditolak**, bukan diabaikan: klien yang masih mengirim `address` atau `photoUrl` pada `POST /users`, `PATCH /users/:id`, atau `PATCH /profile` akan menerima **400 VALIDATION_ERROR**, bukan 200 dengan field yang didiamkan. Aplikasi mobile tiap deployment perlu di-build ulang tanpa field tersebut. Dokumen `users` yang sudah tersimpan dan masih memuat nilai lama tidak akan error saat dibaca (Mongoose tidak memvalidasi saat read) — nilainya hanya tidak lagi muncul pada response manapun.
 
 ## 5.2. Branch
 
@@ -589,24 +592,24 @@ Aturan:
 
 ## 5.13. Employee — *Scaffold dibuat, migrasi belum dieksekusi*
 
-> **Status: scaffold only.** `models/Employee.ts` sudah dibuat dan bentuknya cocok dengan rancangan di bawah, tetapi **tidak dibaca maupun ditulis oleh service atau route manapun**. Seluruh data kepegawaian yang benar-benar dipakai hari ini — `branch`, `compensation` — masih sepenuhnya berada di `User` (§5.1), persis seperti sebelum file ini dibuat. Ini adalah langkah "expand" pertama dari pola expand–migrate–contract di bagian "Prasyarat" di bawah: aditif murni, reversible, nol perubahan behavior. Bagian ini mendokumentasikan pemisahan yang sudah diputuskan beserta pemicu dan prasyaratnya, supaya keputusannya tidak perlu diturunkan ulang dari awal nanti. **Jangan migrasikan field secara sebagian** — lihat "Prasyarat" di bawah.
+> **Status: scaffold only.** `models/Employee.ts` sudah dibuat dan bentuknya cocok dengan rancangan di bawah, tetapi **tidak dibaca maupun ditulis oleh service atau route manapun**. Satu-satunya data kepegawaian yang masih berada di `User` hari ini adalah **`branch`** (§5.1) — `compensation` sudah dihapus dari `User` dan kini hanya dideklarasikan di sini. Ini adalah langkah "expand" pertama dari pola expand–migrate–contract di bagian "Prasyarat" di bawah: aditif murni, nol perubahan behavior. Bagian ini mendokumentasikan pemisahan yang sudah diputuskan beserta pemicu dan prasyaratnya, supaya keputusannya tidak perlu diturunkan ulang dari awal nanti. **Jangan migrasikan field secara sebagian** — lihat "Prasyarat" di bawah.
 
 ### Masalah yang dipisahkan
 
-`User` saat ini menggabungkan empat hal yang berbeda umur dan berbeda pemilik:
+`User` menggabungkan tiga hal yang berbeda umur dan berbeda pemilik:
 
-| Concern | Field | Pemilik |
-|---|---|---|
-| Identitas login | `username`, `password`, `role`, `status` | Akun |
-| Profil orang | `name`, `phone`, `address`, `photoUrl` | Akun |
-| Penugasan organisasi | `branch` | Kepegawaian |
-| Payroll | `compensation.*` | Kepegawaian |
+| Concern | Field | Pemilik | Status |
+|---|---|---|---|
+| Identitas login | `username`, `password`, `role`, `status` | Akun | Tetap di `User` |
+| Profil orang | `name`, `phone` | Akun | Tetap di `User` |
+| Penugasan organisasi | `branch` | Kepegawaian | **Masih di `User`**, target pindah |
+| Payroll | `compensation.*` | Kepegawaian | Sudah dihapus dari `User` (§5.1) |
 
-Dua baris terakhir bukan properti sebuah *akun*, melainkan properti sebuah *hubungan kerja*. Konsekuensinya sudah terlihat hari ini: `compensation` ikut tersimpan pada dokumen yang sama dengan password hash, dan §5.1 harus menjelaskan bahwa `status` berarti status akun, bukan status pegawai — ambiguitas yang hilang sendiri begitu kedua entitas dipisah.
+Dua baris terakhir bukan properti sebuah *akun*, melainkan properti sebuah *hubungan kerja*. Sebagian konsekuensinya sudah ditutup: `compensation` tidak lagi tersimpan pada dokumen yang sama dengan password hash. Yang belum adalah `branch`, dan §5.1 masih harus menjelaskan bahwa `status` berarti status akun, bukan status pegawai — ambiguitas yang hilang sendiri begitu `employmentStatus` di bawah benar-benar dipakai.
 
 ### Rancangan model
 
-`User` (§5.1) dipersempit menjadi akun murni: `username`, `password`, `name`, `role`, `status`, timestamps.
+`User` (§5.1) dipersempit menjadi akun murni: `username`, `password`, `name`, `phone`, `role`, `status`, timestamps — yaitu field §5.1 hari ini dikurangi `branch`.
 
 `Employee` menjadi catatan kepegawaian, **1:1 opsional** terhadap `User`:
 

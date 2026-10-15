@@ -124,7 +124,7 @@ Simpan di `.env.local` (sudah di-gitignore lewat pola `.env*`), buat juga `.env.
 ### Phase 2 — Master Data
 **Services:**
 - [x] `services/branch.service.ts`
-- [x] `services/user.service.ts` — hash password saat create, jangan pernah expose hash (§7.3) — juga strip `compensation` dari response (tidak ada di field list PRD §3.1) dan exclude role platform dari semua query (§3.4). *Kini berupa allowlist positif `HOST`/`AGENT`, bukan pengecualian `GROOMA_ADMIN` — lihat PRD §3.6 poin 2 untuk alasannya.*
+- [x] `services/user.service.ts` — hash password saat create, jangan pernah expose hash (§7.3) dan exclude role platform dari semua query (§3.4). *Kini berupa allowlist positif `HOST`/`AGENT`, bukan pengecualian `GROOMA_ADMIN` — lihat PRD §3.6 poin 2 untuk alasannya. Langkah "strip `compensation` dari response" sudah tidak relevan: field itu kini dihapus dari model `User` sepenuhnya, jadi tidak ada lagi yang perlu di-strip (PRD §5.1).*
 - [x] `services/customer.service.ts` — pencarian/dedupe nomor telepon ternormalisasi, bukan exact-string match (§5.3); dedupe-by-phone-variant di create mengembalikan customer yang sudah ada alih-alih membuat duplikat
 - [x] `services/service.service.ts` — validasi `revenueSharing` total 100% (sudah ada di model); surfaced dengan jelas via `lib/errors.ts` yang sekarang memformat `mongoose.Error.ValidationError` ke 400 konsisten (juga dipakai `User`/`Branch` save)
 

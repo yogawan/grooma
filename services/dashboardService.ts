@@ -46,6 +46,33 @@ function getDateRange(
   return { from: start, to: end };
 }
 
+// Builds the $group _id expression for bucketing by period. Exported (not
+// just inlined in getRevenue) so it's unit-testable without a real MongoDB
+// connection: a MongoDB expression object may have at most one operator key
+// (one field starting with $) at any given nesting level — { $month: ...,
+// $year: ... } throws "must have exactly one field" at aggregation
+// execution time, not at any validation step this codebase runs before
+// that, so a mistake here surfaces in production as a bare 500 with no
+// indication of which period triggered it. WEEK/MONTH need two components
+// (year disambiguates e.g. week 1 of 2025 from week 1 of 2026), so each
+// goes under its own plain (non-$) field name instead of colliding in one
+// object.
+export function buildPeriodGroupingId(period: Period): Record<string, unknown> {
+  switch (period) {
+    case "DAY":
+      return { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } };
+    case "WEEK":
+      return { year: { $year: "$createdAt" }, week: { $week: "$createdAt" } };
+    case "MONTH":
+      return {
+        year: { $year: "$createdAt" },
+        month: { $month: "$createdAt" },
+      };
+    case "YEAR":
+      return { $year: "$createdAt" };
+  }
+}
+
 // §12.4: exclude CANCELLED, don't count PENDING as received
 function baseTransactionMatch(branchId?: string) {
   const match: Record<string, unknown> = {
@@ -121,24 +148,7 @@ export async function getRevenue(user: SessionUser, query: RevenueQuery) {
     createdAt: { $gte: from, $lte: to },
   };
 
-  // Group by period (day/week/month/year)
-  const dateGrouping: Record<string, unknown> = {};
-  switch (query.period) {
-    case "DAY":
-      dateGrouping.$dateToString = { format: "%Y-%m-%d", date: "$createdAt" };
-      break;
-    case "WEEK":
-      dateGrouping.$week = "$createdAt";
-      dateGrouping.$year = "$createdAt";
-      break;
-    case "MONTH":
-      dateGrouping.$month = "$createdAt";
-      dateGrouping.$year = "$createdAt";
-      break;
-    case "YEAR":
-      dateGrouping.$year = "$createdAt";
-      break;
-  }
+  const dateGrouping = buildPeriodGroupingId(query.period);
 
   const revenueByPeriod = await TransactionModel.aggregate([
     { $match: match },

@@ -125,7 +125,7 @@ export const paymentPaths = {
                       reason: {
                         type: "string",
                         description:
-                          "status_updated | idempotent_no_op | unknown_order | unmapped_status | invalid_transition",
+                          "status_updated | idempotent_no_op | unknown_order | unmapped_status | invalid_transition | transaction_cancelled",
                       },
                     },
                   },

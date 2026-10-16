@@ -35,6 +35,15 @@ export function computeServicePricing(
   return { subtotal, discountAmount, total, ownerRevenue, employeeRevenue };
 }
 
+// 1,000 IDR = 1 point, floor-rounded (§5.3) — basis is `total` (post-discount,
+// what the customer actually paid), matching ownerRevenue/employeeRevenue's
+// own basis above. Shared by transaction creation (CASH/SELF_RECORDED, paid
+// immediately) and the Midtrans webhook (MANAGED QRIS, paid on settlement) so
+// both crediting paths compute the same number from the same formula.
+export function computeLoyaltyPoints(total: number): number {
+  return Math.floor(total / 1000);
+}
+
 export function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

@@ -160,6 +160,19 @@ const TransactionSchema = new Schema(
       min: 0,
     },
 
+    // Computed unconditionally at creation from `total`, same as
+    // owner/employeeRevenue above — this is "what this sale is worth in
+    // points," not "has it been credited yet." The actual increment to
+    // Customer.loyaltyPoints only happens once paymentStatus is/becomes PAID
+    // (services/transactionService.ts, services/paymentService.ts), so a
+    // still-PENDING QRIS transaction shows the points it WILL earn, not
+    // points already given.
+    pointsEarned: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     paymentReference: {
       type: String,
       trim: true,

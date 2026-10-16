@@ -258,6 +258,11 @@ export const Transaction = {
     total: { type: "number" },
     ownerRevenue: { type: "number" },
     employeeRevenue: { type: "number" },
+    pointsEarned: {
+      type: "integer",
+      description:
+        "floor(total / 1000) — 1,000 IDR = 1 point. Set at creation regardless of paymentStatus (what this sale is worth), but only credited to the customer's loyaltyPoints once paymentStatus is/becomes PAID.",
+    },
     paymentReference: { type: "string", nullable: true },
     paidAt: { type: "string", format: "date-time", nullable: true },
     completedAt: { type: "string", format: "date-time", nullable: true },

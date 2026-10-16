@@ -332,8 +332,10 @@ Aturan:
 - Nomor telepon dapat digunakan untuk pencarian pelanggan.
 - Identitas pelanggan tidak boleh otomatis digandakan hanya karena format nomor telepon berbeda.
 - Customer yang sudah memiliki transaksi tidak boleh dihapus secara permanen.
-- `loyaltyPoints` tidak boleh dimanipulasi langsung melalui endpoint update profil pelanggan.
-- Perubahan poin harus melalui mekanisme transaksi poin yang dapat diaudit.
+- `loyaltyPoints` tidak boleh dimanipulasi langsung melalui endpoint update profil pelanggan — `validations/customerSchema.ts` tidak pernah menerima field ini pada `create`/`update`, ditolak `400` oleh `.strict()` kalau dikirim.
+- Perubahan poin harus melalui mekanisme transaksi poin yang dapat diaudit. **Earning sudah diimplementasikan**: setiap transaksi yang `paymentStatus`-nya `PAID` menambahkan `pointsEarned` miliknya ke `loyaltyPoints` customer tersebut — rumus dan titik pemicunya ada di §5.5. Transaksi tanpa customer (`customer: null`, walk-in) tidak menambah poin siapa pun.
+- **Pembalikan poin saat pembatalan sudah diimplementasikan.** Membatalkan transaksi yang sudah `PAID` (`POST /transactions/:id/cancel`) mencabut `pointsEarned`-nya dari `Customer.loyaltyPoints`. Membatalkan transaksi yang belum `PAID` tidak melakukan apa-apa pada poin — tidak ada yang pernah dikreditkan untuk dicabut. Transisi `transactionStatus` ke `CANCELLED` dan keputusan reversal keduanya berjalan sebagai satu operasi atomik dan kondisional (`findOneAndUpdate`, bukan read-modify-write), sehingga aman terhadap race dengan notifikasi Midtrans yang memproses settlement pada transaksi yang sama secara bersamaan — siapa pun yang menang di level database, yang kalah otomatis tidak melakukan apa-apa, bukan saling timpa. Pembatalan tetap tidak menyentuh `paymentStatus` itu sendiri maupun memicu refund gateway apa pun (proses refund memang belum dibangun, lihat §20) — hanya `loyaltyPoints` yang dibalik.
+- **Redemption (pemakaian poin) tetap di luar scope** (§20) — `loyaltyPoints` hanya pernah bertambah, tidak ada endpoint untuk menguranginya.
 
 Catatan: definisi operasional `DECOY` harus dikonfirmasi sebelum fitur klasifikasi pelanggan dirilis.
 
@@ -381,6 +383,7 @@ Field utama:
 - `total`
 - `ownerRevenue`
 - `employeeRevenue`
+- `pointsEarned`
 - `paymentReference`
 - `paidAt`
 - `completedAt`
@@ -427,6 +430,7 @@ Nilai pembayaran dan pembagian hasil harus dihitung backend, bukan diterima seba
 - Perubahan transaksi yang sudah dibayar harus melalui mekanisme koreksi yang disetujui.
 - Setiap perubahan yang disetujui harus dicatat dalam audit history.
 - Untuk `paymentMethod: QRIS`, nilai awal `paymentStatus` bergantung pada `paymentIntegrationMode` milik HOST pemilik cabang (§5.1, §9.6): `PENDING` (menunggu Midtrans) untuk `MANAGED`, langsung `PAID` (sama seperti `CASH`) untuk `SELF_RECORDED`.
+- `pointsEarned` dihitung dari `total` (bukan `subtotal`) dengan `floor(total / 1000)` — 1.000 Rupiah = 1 poin, dibulatkan ke bawah. Dihitung dan disimpan saat transaksi dibuat terlepas dari `paymentStatus` (sama seperti `ownerRevenue`/`employeeRevenue`), tetapi baru ditambahkan ke `Customer.loyaltyPoints` tepat sekali, pada saat `paymentStatus` bernilai atau berubah menjadi `PAID` — lihat §5.3.
 
 ## 5.6. Inventory
 

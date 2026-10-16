@@ -1,6 +1,11 @@
 import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
-import { computeServicePricing, escapeRegex, extractRefId } from "@/lib/utils";
+import {
+  computeLoyaltyPoints,
+  computeServicePricing,
+  escapeRegex,
+  extractRefId,
+} from "@/lib/utils";
 
 describe("Utils", () => {
   describe("escapeRegex", () => {
@@ -102,6 +107,29 @@ describe("Utils", () => {
 
       expect(result.ownerRevenue).toBe(70000);
       expect(result.employeeRevenue).toBe(30000);
+    });
+  });
+
+  describe("computeLoyaltyPoints", () => {
+    it("converts 1,000 IDR to 1 point", () => {
+      expect(computeLoyaltyPoints(1000)).toBe(1);
+    });
+
+    it("matches the user's own example: 25,000 IDR = 25 points", () => {
+      expect(computeLoyaltyPoints(25000)).toBe(25);
+    });
+
+    it("floors a non-multiple of 1,000 instead of rounding", () => {
+      expect(computeLoyaltyPoints(25700)).toBe(25);
+      expect(computeLoyaltyPoints(25999)).toBe(25);
+    });
+
+    it("returns 0 for a total under 1,000", () => {
+      expect(computeLoyaltyPoints(999)).toBe(0);
+    });
+
+    it("returns 0 for a total of 0 (e.g. a 100% discount)", () => {
+      expect(computeLoyaltyPoints(0)).toBe(0);
     });
   });
 

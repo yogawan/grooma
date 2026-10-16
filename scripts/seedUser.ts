@@ -20,6 +20,7 @@ export interface SeedUserOptions {
   usernameEnv: string;
   passwordEnv: string;
   nameEnv: string;
+  phoneEnv?: string;
 }
 
 function requireEnv(name: string): string {
@@ -35,6 +36,14 @@ function requireTrimmedEnv(name: string): string {
   return requireEnv(name).trim();
 }
 
+// Unlike username/password/name, phone has no required-env-var counterpart —
+// it's optional on the model itself, so a blank/unset value here just means
+// "don't set it," not "fail."
+function optionalTrimmedEnv(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value ? value : undefined;
+}
+
 // Idempotent: an existing account with the same username is left untouched
 // (including its password), so re-running a provisioning script is safe.
 export async function seedUser(options: SeedUserOptions): Promise<void> {
@@ -44,6 +53,9 @@ export async function seedUser(options: SeedUserOptions): Promise<void> {
   // operator set, so a password with a leading or trailing space would be
   // impossible to log in with.
   const password = requireEnv(options.passwordEnv);
+  const phone = options.phoneEnv
+    ? optionalTrimmedEnv(options.phoneEnv)
+    : undefined;
 
   // Mirrors validations/userSchema.ts so a seeded account can't sit outside
   // the bounds the API itself enforces on every other account.
@@ -61,6 +73,10 @@ export async function seedUser(options: SeedUserOptions): Promise<void> {
 
   if (name.length < 1 || name.length > 100) {
     throw new Error(`${options.nameEnv} must be 1-100 characters.`);
+  }
+
+  if (phone !== undefined && phone.length > 32) {
+    throw new Error(`${options.phoneEnv} must be at most 32 characters.`);
   }
 
   await connectDB();
@@ -100,6 +116,7 @@ export async function seedUser(options: SeedUserOptions): Promise<void> {
     username,
     password: await hashPassword(password),
     name,
+    phone,
     role: options.role,
     branch: null,
     status: "ACTIVE",

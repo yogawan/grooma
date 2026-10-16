@@ -10,7 +10,12 @@
  * - Auditing payment state consistency
  *
  * Usage:
- *   bun scripts/reconcilePayments.ts [--fix] [--limit 100]
+ *   npx tsx --env-file=.env.local scripts/reconcilePayments.ts [--fix] [--limit 100]
+ *
+ * (Not `bun scripts/reconcilePayments.ts` — Bun's node:v8 shim throws on
+ * bson's startup-snapshot check at import time before this script's own
+ * code ever runs. tsx runs under Node, which has no such gap, but — unlike
+ * Bun — doesn't auto-load .env.local, hence --env-file.)
  *
  * Options:
  *   --fix        Apply fixes (default: dry-run, only report)

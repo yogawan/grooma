@@ -25,6 +25,7 @@ interface UserRow {
   username: string;
   password: string;
   name: string;
+  phone?: string;
   role: string;
 }
 
@@ -78,6 +79,7 @@ beforeEach(() => {
   delete process.env.SEED_HOST_USERNAME;
   delete process.env.SEED_HOST_PASSWORD;
   delete process.env.SEED_HOST_NAME;
+  delete process.env.SEED_HOST_PHONE;
 });
 
 describe("seedUser input handling (L-4)", () => {
@@ -154,4 +156,43 @@ describe("seedUser single-HOST guard (L-6)", () => {
   // A case here used to assert the guard did not fire when seeding a
   // GROOMA_ADMIN alongside the HOST. That role is seeded by the admin backend
   // now, so the guard is unconditional and there is no second role to exempt.
+});
+
+describe("seedUser optional phone", () => {
+  const HOST_OPTS_WITH_PHONE = { ...HOST_OPTS, phoneEnv: "SEED_HOST_PHONE" };
+
+  it("sets phone when provided", async () => {
+    setEnv("owner", "password123");
+    process.env.SEED_HOST_PHONE = "08123456789";
+
+    await seedUser(HOST_OPTS_WITH_PHONE);
+
+    expect(users[0]?.phone).toBe("08123456789");
+  });
+
+  it("omits phone when phoneEnv is unset — it's optional, not required", async () => {
+    setEnv("owner", "password123");
+
+    await seedUser(HOST_OPTS_WITH_PHONE);
+
+    expect(users[0]?.phone).toBeUndefined();
+  });
+
+  it("treats a blank SEED_HOST_PHONE as not provided rather than an empty string", async () => {
+    setEnv("owner", "password123");
+    process.env.SEED_HOST_PHONE = "   ";
+
+    await seedUser(HOST_OPTS_WITH_PHONE);
+
+    expect(users[0]?.phone).toBeUndefined();
+  });
+
+  it("rejects a phone longer than 32 characters", async () => {
+    setEnv("owner", "password123");
+    process.env.SEED_HOST_PHONE = "0".repeat(33);
+
+    await expect(seedUser(HOST_OPTS_WITH_PHONE)).rejects.toThrow(
+      /at most 32 characters/,
+    );
+  });
 });

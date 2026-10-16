@@ -15,10 +15,17 @@
  *
  * Required env: SEED_HOST_USERNAME, SEED_HOST_PASSWORD, SEED_HOST_NAME
  * (plus MONGODB_URI and SESSION_SECRET, as with any entry point).
+ * Optional env: SEED_HOST_PHONE — phone is optional on the model itself,
+ * so this can be left unset.
  *
- * Usage:
- *   SEED_HOST_USERNAME=owner SEED_HOST_PASSWORD='...' SEED_HOST_NAME='...' \
- *     bun scripts/seedHost.ts
+ * Usage (reads .env.local automatically):
+ *   npm run seed:host
+ *
+ * Not `bun scripts/seedHost.ts` — the installed bson version's
+ * startup-snapshot check throws under Bun's incomplete node:v8 shim before
+ * this script's own code ever runs. tsx runs under Node, which has no such
+ * gap, but does need the env vars from .env.local explicitly, hence
+ * --env-file in the npm script.
  */
 
 import { runSeed } from "./seedUser";
@@ -28,4 +35,5 @@ runSeed({
   usernameEnv: "SEED_HOST_USERNAME",
   passwordEnv: "SEED_HOST_PASSWORD",
   nameEnv: "SEED_HOST_NAME",
+  phoneEnv: "SEED_HOST_PHONE",
 });

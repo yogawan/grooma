@@ -14,6 +14,7 @@ import { getPaymentIntegrationMode } from "@/lib/paymentConfig";
 import { escapeRegex, extractRefId } from "@/lib/utils";
 import PaymentModel from "@/models/Payment";
 import TransactionModel from "@/models/Transaction";
+import { creditLoyaltyPoints } from "@/services/customerService";
 
 interface TransactionForPayment {
   _id: unknown;
@@ -271,10 +272,50 @@ export async function processMidtransNotification(
   const transaction = await TransactionModel.findById(payment.transaction);
   if (transaction) {
     if (mappedStatus === "PAID") {
-      transaction.paymentStatus = "PAID";
-      transaction.paidAt = payment.paidAt ?? new Date();
-      transaction.paymentReference = payment.providerOrderId;
-      await transaction.save();
+      // Atomic and conditional — the counterpart to cancelTransaction's own
+      // atomic transition (§9.2/§14). A late-arriving settlement for a
+      // transaction that was cancelled in the meantime must never mark it
+      // PAID or award points; this filter makes that impossible regardless
+      // of which request reaches MongoDB first, not just in the common
+      // ordering where the cancel happens first.
+      const updated = await TransactionModel.findOneAndUpdate(
+        { _id: transaction._id, transactionStatus: { $ne: "CANCELLED" } },
+        {
+          $set: {
+            paymentStatus: "PAID",
+            paidAt: payment.paidAt ?? new Date(),
+            paymentReference: payment.providerOrderId,
+          },
+        },
+        { new: true },
+      );
+
+      if (!updated) {
+        logger.warn(
+          "Ignored Midtrans settlement for an already-cancelled transaction",
+          { transactionId: transaction._id.toString() },
+        );
+        return { applied: false, reason: "transaction_cancelled" };
+      }
+
+      // This branch only runs on a real PENDING->PAID transition (the
+      // idempotent-replay check above already returned early for a
+      // duplicate "settlement" notification), so a retried webhook can
+      // never double-credit the same transaction's points.
+      if (updated.customer) {
+        try {
+          await creditLoyaltyPoints(updated.customer, updated.pointsEarned);
+        } catch (error) {
+          logger.error(
+            "Failed to credit loyalty points on payment settlement",
+            {
+              transactionId: updated._id.toString(),
+              customerId: String(updated.customer),
+              message: error instanceof Error ? error.message : String(error),
+            },
+          );
+        }
+      }
     } else if (mappedStatus === "FAILED") {
       transaction.paymentStatus = "FAILED";
       await transaction.save();

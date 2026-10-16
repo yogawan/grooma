@@ -10,12 +10,21 @@ import {
 import { logger } from "@/lib/logger";
 import { connectDB } from "@/lib/mongodb";
 import { getPaymentIntegrationMode } from "@/lib/paymentConfig";
-import { computeServicePricing, escapeRegex, extractRefId } from "@/lib/utils";
+import {
+  computeLoyaltyPoints,
+  computeServicePricing,
+  escapeRegex,
+  extractRefId,
+} from "@/lib/utils";
 import BranchModel from "@/models/Branch";
 import CustomerModel from "@/models/Customer";
 import PaymentModel from "@/models/Payment";
 import ServiceModel from "@/models/Service";
 import TransactionModel from "@/models/Transaction";
+import {
+  creditLoyaltyPoints,
+  reverseLoyaltyPoints,
+} from "@/services/customerService";
 import { createQrisPaymentForTransaction } from "@/services/paymentService";
 import type {
   CreateTransactionInput,
@@ -113,6 +122,7 @@ export async function createTransaction(
 
   const { subtotal, total, ownerRevenue, employeeRevenue } =
     computeServicePricing(service, input.discountAmount);
+  const pointsEarned = computeLoyaltyPoints(total);
 
   const transactionCode = await generateUniqueTransactionCode(branch.timezone);
 
@@ -164,6 +174,7 @@ export async function createTransaction(
     total,
     ownerRevenue,
     employeeRevenue,
+    pointsEarned,
     paidAt: recordAsPaid ? new Date() : undefined,
   }).catch(async (error: unknown) => {
     // Hand the key back so the client can retry; otherwise a transient
@@ -178,6 +189,21 @@ export async function createTransaction(
   // a gateway hiccup must not make a retry create a second one.
   if (idempotencyKey) {
     await completeIdempotencyKey(idempotencyKey, user.id, transaction._id);
+  }
+
+  // A points-crediting failure must not make an otherwise-successful sale
+  // look like an error to the agent, same reasoning as the QRIS failure
+  // handling below — the transaction is the sale of record regardless.
+  if (recordAsPaid && customer) {
+    try {
+      await creditLoyaltyPoints(customer._id, pointsEarned);
+    } catch (error) {
+      logger.error("Failed to credit loyalty points for a paid transaction", {
+        transactionId: transaction._id.toString(),
+        customerId: customer._id.toString(),
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   if (recordAsPaid) {
@@ -308,19 +334,64 @@ export async function cancelTransaction(user: SessionUser, id: string) {
     throw Errors.notFound("Transaction not found.");
   }
 
+  // branch never changes after creation, so this initial read is safe to
+  // authorize against even though the atomic update below may race with a
+  // concurrent request — unlike transactionStatus/paymentStatus, there is no
+  // stale-read risk here.
   requireBranchAccess(user, extractRefId(transaction.branch));
 
-  if (transaction.transactionStatus === "CANCELLED") {
+  // Atomic and conditional: this is also what makes cancellation race-safe
+  // against a concurrent Midtrans webhook (§9.2) settling the same
+  // transaction PAID at the same instant. Whichever write reaches MongoDB
+  // first wins; the loser's filter simply fails to match zero documents
+  // instead of clobbering the winner's state. A plain findById + mutate +
+  // save() here would not have this property — two concurrent requests
+  // could both read "not yet cancelled" and both proceed.
+  //
+  // new: false (the default, made explicit) returns the PRE-transition
+  // document — exactly the paymentStatus/pointsEarned/customer snapshot as
+  // of the instant this transition actually applied, not an earlier
+  // possibly-stale read.
+  const previous = await TransactionModel.findOneAndUpdate(
+    { _id: id, transactionStatus: { $nin: ["CANCELLED", "COMPLETED"] } },
+    { $set: { transactionStatus: "CANCELLED" } },
+    { new: false },
+  );
+
+  if (!previous) {
+    // The conditional update matched nothing: either already cancelled, or
+    // already completed (by this request or a concurrent one — a second
+    // "double reversal" attempt lands here too, since CANCELLED is in the
+    // $nin exclusion forever after the first successful transition).
+    const current = await TransactionModel.findById(id);
+    if (current?.transactionStatus === "COMPLETED") {
+      throw Errors.conflict("Cannot cancel a completed transaction.");
+    }
     throw Errors.conflict("Transaction is already cancelled.");
   }
-  if (transaction.transactionStatus === "COMPLETED") {
-    throw Errors.conflict("Cannot cancel a completed transaction.");
+
+  // Only a transaction that was actually PAID at the moment of this atomic
+  // transition ever had points credited to begin with (§5.3) — reverse
+  // exactly what it earned. A points-reversal failure must not make an
+  // otherwise-successful cancellation look like an error, same reasoning as
+  // the crediting side in createTransaction.
+  if (
+    previous.paymentStatus === "PAID" &&
+    previous.customer &&
+    previous.pointsEarned > 0
+  ) {
+    try {
+      await reverseLoyaltyPoints(previous.customer, previous.pointsEarned);
+    } catch (error) {
+      logger.error("Failed to reverse loyalty points on cancellation", {
+        transactionId: previous._id.toString(),
+        customerId: String(previous.customer),
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
-  transaction.transactionStatus = "CANCELLED";
-  await transaction.save();
-
-  return transaction;
+  return TransactionModel.findById(id);
 }
 
 export async function getReceipt(user: SessionUser, id: string) {

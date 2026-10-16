@@ -156,6 +156,57 @@ export async function updateCustomer(
   return serializeCustomer(customer, role);
 }
 
+// $inc is atomic — safe under concurrent credits/reversals for the same
+// customer without a read-modify-write race. Shared by creditLoyaltyPoints
+// and reverseLoyaltyPoints below so the two never drift into
+// independently-maintained copies of the same one-line update.
+async function adjustLoyaltyPoints(
+  customerId: unknown,
+  delta: number,
+): Promise<void> {
+  if (delta === 0) {
+    return;
+  }
+
+  await connectDB();
+  await CustomerModel.updateOne(
+    { _id: customerId },
+    { $inc: { loyaltyPoints: delta } },
+  );
+}
+
+// Called from transactionService/paymentService exactly once per
+// transaction, right when its paymentStatus is/becomes PAID (§5.3: points
+// only change through the transaction mechanism, never a direct profile
+// edit). A missing/inactive customer is silently skipped rather than
+// throwing: the sale itself already succeeded, and a points side-effect
+// failing must never make that look like an error to the agent who made
+// the sale.
+export async function creditLoyaltyPoints(
+  customerId: unknown,
+  points: number,
+): Promise<void> {
+  if (points <= 0) {
+    return;
+  }
+  await adjustLoyaltyPoints(customerId, points);
+}
+
+// The reversal counterpart, called from cancelTransaction when a
+// transaction that had already earned points gets cancelled (§5.3). Takes
+// the same non-negative "how many points to take away" shape as
+// creditLoyaltyPoints so call sites never need to remember to negate —
+// this function owns the sign.
+export async function reverseLoyaltyPoints(
+  customerId: unknown,
+  points: number,
+): Promise<void> {
+  if (points <= 0) {
+    return;
+  }
+  await adjustLoyaltyPoints(customerId, -points);
+}
+
 export async function setCustomerStatus(
   id: string,
   input: SetCustomerStatusInput,

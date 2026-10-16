@@ -86,7 +86,11 @@ export async function createUser(input: CreateUserInput) {
     password: passwordHash,
     name: input.name,
     role: input.role,
-    branch: input.branch ?? null,
+    // `||` not `??`: branch is typed string | null | undefined, and an empty
+    // string is a valid Zod value here — `??` only catches null/undefined,
+    // so "" would reach Mongoose's ObjectId cast as-is and crash with a 500
+    // instead of clearing branch the way null does.
+    branch: input.branch || null,
     phone: input.phone,
   });
 
@@ -133,7 +137,10 @@ export async function updateUser(id: string, input: UpdateUserInput) {
     if (input.branch) {
       await assertBranchExists(input.branch);
     }
-    user.branch = input.branch ?? null;
+    // `||` not `??` — see the matching comment in createUser. An empty
+    // string must clear branch (HOST's branch must be null) exactly like
+    // null does, not get cast to ObjectId and crash.
+    user.branch = input.branch || null;
   }
 
   await user.save();

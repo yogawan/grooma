@@ -90,6 +90,7 @@ async function reconcilePayments(): Promise<ReconciliationResult> {
       // Get authoritative status from Midtrans
       const midtransStatus = await getTransactionStatus(
         payment.providerOrderId,
+        "POS",
       );
 
       // Map Midtrans status to local status enum

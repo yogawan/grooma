@@ -111,8 +111,11 @@ describe("generateSubscriptionInvoice", () => {
     const invoice = await generateSubscriptionInvoice("sub-1");
 
     // The charge must carry a real amount — this was `undefined` before.
+    // Also confirms §23.8: subscription invoices charge through the
+    // BILLING credential set, never POS.
     expect(createQrisCharge).toHaveBeenCalledWith(
       expect.objectContaining({ grossAmount: 50000 }),
+      "BILLING",
     );
     expect(invoice.amount).toBe(50000);
     expect(invoice.status).toBe("PENDING");

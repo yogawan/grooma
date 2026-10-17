@@ -3,17 +3,59 @@ import { createHash } from "node:crypto";
 import midtransClient from "midtrans-client";
 import { Errors } from "./errors";
 
+// Two independent Midtrans merchant accounts (PRD §23.1/§23.8): "POS" is
+// the HOST's own account (used only when PAYMENT_INTEGRATION_MODE=MANAGED,
+// §9.6); "BILLING" is Grooma's own account for subscription invoices,
+// required on every deployment regardless of the HOST's own mode. They
+// must never be conflated — each is signed with its own server key, so
+// using the wrong one for a notification doesn't just misattribute money,
+// it fails signature verification outright. Every call site below must
+// say which one it means; there is no default.
+export type MidtransCredentialSet = "POS" | "BILLING";
+
+interface MidtransCredentials {
+  serverKey: string | undefined;
+  clientKey: string | undefined;
+  isProduction: boolean;
+}
+
+function readCredentials(set: MidtransCredentialSet): MidtransCredentials {
+  if (set === "BILLING") {
+    return {
+      serverKey: process.env.GROOMA_BILLING_MIDTRANS_SERVER_KEY,
+      clientKey: process.env.GROOMA_BILLING_MIDTRANS_CLIENT_KEY,
+      isProduction:
+        process.env.GROOMA_BILLING_MIDTRANS_IS_PRODUCTION === "true",
+    };
+  }
+
+  return {
+    serverKey: process.env.MIDTRANS_SERVER_KEY,
+    clientKey: process.env.MIDTRANS_CLIENT_KEY,
+    isProduction: process.env.MIDTRANS_IS_PRODUCTION === "true",
+  };
+}
+
+function envVarName(
+  set: MidtransCredentialSet,
+  key: "SERVER_KEY" | "CLIENT_KEY",
+): string {
+  return set === "BILLING"
+    ? `GROOMA_BILLING_MIDTRANS_${key}`
+    : `MIDTRANS_${key}`;
+}
+
 // Credentials are read lazily, NOT at module scope. A SELF_RECORDED
 // deployment (§9.6) belongs to a host that collects on its own QRIS and
-// therefore has no Midtrans account at all — yet this module sits on the
-// import path of every transaction route (transactionService ->
+// therefore has no POS Midtrans account at all — yet this module sits on
+// the import path of every transaction route (transactionService ->
 // paymentService -> here). Throwing at import time would make those routes
 // fail to load entirely on a perfectly valid deployment.
-function requireServerKey(): string {
-  const serverKey = process.env.MIDTRANS_SERVER_KEY;
+function requireServerKey(set: MidtransCredentialSet): string {
+  const { serverKey } = readCredentials(set);
   if (!serverKey) {
     throw Errors.paymentGateway(
-      "Midtrans is not configured for this deployment (MIDTRANS_SERVER_KEY is unset).",
+      `Midtrans is not configured for this deployment (${envVarName(set, "SERVER_KEY")} is unset).`,
     );
   }
   return serverKey;
@@ -21,27 +63,33 @@ function requireServerKey(): string {
 
 // Credentials never leave the server: this module is only ever imported
 // from route handlers / services, never from client components (§9.1).
-let cachedCoreApi: InstanceType<typeof midtransClient.CoreApi> | null = null;
+// One cached client per credential set, not one global — POS and BILLING
+// are different Midtrans accounts with different base behavior.
+const cachedCoreApi: Partial<
+  Record<MidtransCredentialSet, InstanceType<typeof midtransClient.CoreApi>>
+> = {};
 
-function getCoreApi() {
-  if (cachedCoreApi) {
-    return cachedCoreApi;
+function getCoreApi(set: MidtransCredentialSet) {
+  const cached = cachedCoreApi[set];
+  if (cached) {
+    return cached;
   }
 
-  const clientKey = process.env.MIDTRANS_CLIENT_KEY;
+  const { clientKey, isProduction } = readCredentials(set);
   if (!clientKey) {
     throw Errors.paymentGateway(
-      "Midtrans is not configured for this deployment (MIDTRANS_CLIENT_KEY is unset).",
+      `Midtrans is not configured for this deployment (${envVarName(set, "CLIENT_KEY")} is unset).`,
     );
   }
 
-  cachedCoreApi = new midtransClient.CoreApi({
-    isProduction: process.env.MIDTRANS_IS_PRODUCTION === "true",
-    serverKey: requireServerKey(),
+  const api = new midtransClient.CoreApi({
+    isProduction,
+    serverKey: requireServerKey(set),
     clientKey,
   });
+  cachedCoreApi[set] = api;
 
-  return cachedCoreApi;
+  return api;
 }
 
 const QRIS_EXPIRY_MINUTES = 15;
@@ -85,15 +133,15 @@ function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export async function createQrisCharge(params: {
-  orderId: string;
-  grossAmount: number;
-}): Promise<QrisChargeResult> {
+export async function createQrisCharge(
+  params: { orderId: string; grossAmount: number },
+  credentialSet: MidtransCredentialSet,
+): Promise<QrisChargeResult> {
   let response: Record<string, unknown>;
 
   try {
     response = await withTimeout(
-      getCoreApi().charge({
+      getCoreApi(credentialSet).charge({
         payment_type: "qris",
         transaction_details: {
           order_id: params.orderId,
@@ -147,12 +195,13 @@ export interface MidtransStatusResult {
 // (§9.2 step 2, §9.3).
 export async function getTransactionStatus(
   orderId: string,
+  credentialSet: MidtransCredentialSet,
 ): Promise<MidtransStatusResult> {
   let response: Record<string, unknown>;
 
   try {
     response = await withTimeout(
-      getCoreApi().transaction.status(orderId),
+      getCoreApi(credentialSet).transaction.status(orderId),
       "status check",
     );
   } catch (error) {
@@ -179,13 +228,17 @@ export interface MidtransNotificationPayload {
 }
 
 // SHA512(order_id + status_code + gross_amount + server_key) — Midtrans's
-// documented notification signature formula (§9.3).
+// documented notification signature formula (§9.3). server_key must be the
+// key belonging to whichever merchant account actually produced this
+// notification — the caller picks credentialSet based on the order_id
+// prefix (§9.5/§23.8) before this is ever called.
 export function verifyNotificationSignature(
   payload: MidtransNotificationPayload,
+  credentialSet: MidtransCredentialSet,
 ): boolean {
   const expected = createHash("sha512")
     .update(
-      `${payload.order_id}${payload.status_code}${payload.gross_amount}${requireServerKey()}`,
+      `${payload.order_id}${payload.status_code}${payload.gross_amount}${requireServerKey(credentialSet)}`,
     )
     .digest("hex");
 

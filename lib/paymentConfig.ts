@@ -15,6 +15,13 @@ function hasMidtransCredentials(): boolean {
   );
 }
 
+function hasBillingMidtransCredentials(): boolean {
+  return Boolean(
+    process.env.GROOMA_BILLING_MIDTRANS_SERVER_KEY &&
+      process.env.GROOMA_BILLING_MIDTRANS_CLIENT_KEY,
+  );
+}
+
 function parseMode(raw: string | undefined): PaymentIntegrationMode {
   // Unset means MANAGED, which keeps the Midtrans-backed behavior that
   // predates this variable. That is only a safe default because the
@@ -50,5 +57,19 @@ if (getPaymentIntegrationMode() === "MANAGED" && !hasMidtransCredentials()) {
     "PAYMENT_INTEGRATION_MODE is MANAGED but MIDTRANS_SERVER_KEY/MIDTRANS_CLIENT_KEY are missing. " +
       "Set both (this host collects through Grooma's Midtrans integration), " +
       'or set PAYMENT_INTEGRATION_MODE="SELF_RECORDED" if the host collects on its own QRIS.',
+  );
+}
+
+// Unconditional — unlike the check above, this does NOT depend on
+// PAYMENT_INTEGRATION_MODE. Subscription billing always uses Grooma's own
+// Midtrans account regardless of the HOST's own payment mode (PRD
+// §23.1/§23.8), so every deployment needs this configured, including
+// SELF_RECORDED ones that correctly have no MIDTRANS_* credentials at all.
+if (!hasBillingMidtransCredentials()) {
+  throw new Error(
+    "Missing GROOMA_BILLING_MIDTRANS_SERVER_KEY/GROOMA_BILLING_MIDTRANS_CLIENT_KEY. " +
+      "Subscription billing always uses Grooma's own Midtrans account, " +
+      "independent of PAYMENT_INTEGRATION_MODE (PRD §23.1/§23.8) — every " +
+      "deployment needs these set, even SELF_RECORDED ones.",
   );
 }

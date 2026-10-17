@@ -65,10 +65,13 @@ export async function generateSubscriptionInvoice(
   expiresAt.setMinutes(expiresAt.getMinutes() + 15); // QRIS expires in 15 min
 
   try {
-    const chargeResult = await createQrisCharge({
-      orderId: providerOrderId,
-      grossAmount: plan.price,
-    });
+    const chargeResult = await createQrisCharge(
+      {
+        orderId: providerOrderId,
+        grossAmount: plan.price,
+      },
+      "BILLING",
+    );
 
     qrCodeUrl = chargeResult.qrCodeUrl;
     qrString = chargeResult.qrString;
@@ -200,7 +203,7 @@ export async function processSubscriptionInvoiceNotification(
 
   // Re-fetch authoritative status from Midtrans — the webhook body is never
   // trusted for anything beyond routing (§9.2 step 2).
-  const midtransStatus = await getTransactionStatus(providerOrderId);
+  const midtransStatus = await getTransactionStatus(providerOrderId, "BILLING");
 
   const newStatus = INVOICE_STATUS_MAP[midtransStatus.transactionStatus];
   if (!newStatus) {

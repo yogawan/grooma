@@ -23,3 +23,14 @@ process.env.INTERNAL_CRON_SECRET ??= "test-internal-cron-secret";
 process.env.MIDTRANS_SERVER_KEY ??= "SB-Mid-server-test-key";
 process.env.MIDTRANS_CLIENT_KEY ??= "SB-Mid-client-test-key";
 process.env.MIDTRANS_IS_PRODUCTION ??= "false";
+
+// §23.8: subscription billing's Midtrans credentials are a SEPARATE,
+// unconditional requirement in lib/paymentConfig.ts (not gated behind
+// PAYMENT_INTEGRATION_MODE like the pair above) — every test that
+// transitively imports it needs these set too, regardless of which payment
+// mode that specific test is exercising.
+process.env.GROOMA_BILLING_MIDTRANS_SERVER_KEY ??=
+  "SB-Mid-billing-server-test-key";
+process.env.GROOMA_BILLING_MIDTRANS_CLIENT_KEY ??=
+  "SB-Mid-billing-client-test-key";
+process.env.GROOMA_BILLING_MIDTRANS_IS_PRODUCTION ??= "false";

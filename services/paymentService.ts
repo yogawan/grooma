@@ -6,6 +6,7 @@ import { logger } from "@/lib/logger";
 import {
   createQrisCharge,
   getTransactionStatus,
+  type MidtransCredentialSet,
   type MidtransNotificationPayload,
   verifyNotificationSignature,
 } from "@/lib/midtrans";
@@ -44,10 +45,13 @@ export async function createQrisPaymentForTransaction(
   const providerOrderId = await buildProviderOrderId(
     transaction.transactionCode,
   );
-  const charge = await createQrisCharge({
-    orderId: providerOrderId,
-    grossAmount: transaction.total,
-  });
+  const charge = await createQrisCharge(
+    {
+      orderId: providerOrderId,
+      grossAmount: transaction.total,
+    },
+    "POS",
+  );
 
   return PaymentModel.create({
     transaction: transaction._id,
@@ -208,14 +212,14 @@ export async function processMidtransNotification(
     throw Errors.validation("Malformed Midtrans notification payload.");
   }
 
-  if (!verifyNotificationSignature(rawBody)) {
+  if (!verifyNotificationSignature(rawBody, "POS")) {
     logger.warn("Midtrans notification signature mismatch", {
       orderId: rawBody.order_id,
     });
     throw Errors.forbidden("Invalid notification signature.");
   }
 
-  const authoritative = await getTransactionStatus(rawBody.order_id);
+  const authoritative = await getTransactionStatus(rawBody.order_id, "POS");
 
   const payment = await PaymentModel.findOne({
     providerOrderId: authoritative.providerOrderId,
@@ -349,17 +353,27 @@ export async function routeMidtransNotification(
     throw Errors.validation("Malformed Midtrans notification payload.");
   }
 
-  if (!verifyNotificationSignature(rawBody)) {
+  // Prefix decides which Midtrans ACCOUNT this notification belongs to
+  // (§9.5/§23.8) — checked before signature verification because the
+  // signature itself can only be checked against the matching account's
+  // own server key. This is still safe: the prefix isn't trusted for
+  // anything business-critical here, only for which known key to try: an
+  // attacker claiming the wrong prefix just fails verification against
+  // that account's key instead, exactly as before.
+  const orderId = rawBody.order_id;
+  const isSubscriptionNotification = orderId.startsWith("GRM-SUB");
+  const credentialSet: MidtransCredentialSet = isSubscriptionNotification
+    ? "BILLING"
+    : "POS";
+
+  if (!verifyNotificationSignature(rawBody, credentialSet)) {
     logger.warn("Midtrans notification signature mismatch", {
       orderId: rawBody.order_id,
     });
     throw Errors.forbidden("Invalid notification signature.");
   }
 
-  const orderId = rawBody.order_id;
-
-  // Check prefix to determine which service to route to
-  if (orderId.startsWith("GRM-SUB")) {
+  if (isSubscriptionNotification) {
     // SubscriptionInvoice notification — route to billing service
     const { processSubscriptionInvoiceNotification } = await import(
       "./billingService"

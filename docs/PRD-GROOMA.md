@@ -1647,3 +1647,35 @@ Tidak terkait langsung dengan free trial, tapi ditemukan saat membaca `generateS
 
 - **`dueAt` invoice di-hardcode +3 hari dari tanggal pembuatan**, tidak pernah membaca `SubscriptionPlan.graceDays` meskipun field itu ada di schema dan dimaksudkan konfigurabel (`models/SubscriptionPlan.ts`). Setiap plan hari ini punya jatuh tempo 3 hari yang sama, terlepas dari `graceDays`-nya masing-masing.
 - **Jendela pembayaran invoice subscription efektif ~15 menit, bukan 3 hari.** `expireOverdueInvoices()` (dipanggil cron yang sama) memeriksa `invoice.expiresAt` — masa berlaku kode QRIS teknis, di-set 15 menit sejak pembuatan (sama seperti QRIS POS) — bukan `invoice.dueAt`. Tidak ada mekanisme regenerate kode QR untuk invoice subscription yang sudah lewat 15 menit tapi masih dalam `dueAt` (berbeda dari sisi POS, yang punya retry via `createQrisPayment`). Praktiknya, HOST yang tidak membayar dalam 15 menit pertama akan melihat invoice-nya `EXPIRED` jauh sebelum `dueAt` benar-benar lewat, tanpa cara mendapatkan QR baru untuk invoice yang sama.
+
+## 23.8. Pemisahan Akun Midtrans: Billing Platform vs Midtrans Milik HOST
+
+> **Status: diimplementasikan (2026-10-17).** `lib/midtrans.ts` sekarang membaca dua set kredensial independen dan setiap pemanggil wajib menyatakan yang mana (`MidtransCredentialSet = "POS" | "BILLING"`, tidak ada default). Lihat `lib/midtrans.test.ts` untuk bukti keduanya benar-benar terpisah (signature yang valid di satu set gagal divalidasi di set lainnya).
+
+### Kontradiksi yang ditemukan (sebelum perbaikan)
+
+§23.1 menyatakan: *"Pembayaran subscription ini selalu memakai akun Midtrans milik Grooma, terlepas dari `paymentIntegrationMode` yang dipilih HOST untuk transaksi POS-nya sendiri — keduanya hubungan pembayaran yang berbeda."* Ini benar sebagai **niat**, tetapi sebelum perbaikan ini `lib/midtrans.ts` hanya membaca **satu** set kredensial (`MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`, `MIDTRANS_IS_PRODUCTION`), dipakai baik oleh `services/paymentService.ts` (pembayaran POS) maupun `services/billingService.ts` (invoice subscription) — tidak ada percabangan sama sekali.
+
+Konsekuensinya: sejak keputusan final §9.6 bahwa `MANAGED` berarti **kredensial milik HOST sendiri** (bukan lagi akun bersama Grooma — lihat catatan "Payment Integration Mode — FINAL design" di riwayat proyek), setiap deployment bermode `MANAGED` sebelum perbaikan ini akan membuat tagihan subscription-nya **settle ke saldo Midtrans HOST itu sendiri**, bukan ke Grooma — bertentangan langsung dengan §23.1. (Deployment `SELF_RECORDED` bermasalah secara berbeda: HOST tidak punya kredensial Midtrans sama sekali, jadi `generateSubscriptionInvoice` akan gagal total saat mencoba membuat charge QRIS untuk invoice-nya.)
+
+### Desain pemisahan (diimplementasikan)
+
+Dua set kredensial Midtrans yang independen:
+
+| | `MIDTRANS_*` (sudah ada) | `GROOMA_BILLING_MIDTRANS_*` (baru) |
+|---|---|---|
+| Pemilik akun | HOST (per deployment) | Grooma (satu akun, sama di semua deployment) |
+| Dipakai untuk | Transaksi POS (`paymentService.ts`) | Invoice subscription (`billingService.ts`) |
+| Wajib diisi kapan | Hanya saat `PAYMENT_INTEGRATION_MODE=MANAGED` | **Selalu**, di semua deployment, tidak bersyarat pada mode apa pun — subscription tidak bergantung pada `paymentIntegrationMode` HOST (§23.1) |
+| Nilai antar deployment | Berbeda-beda (akun masing-masing HOST) | Sama di seluruh fleet (satu akun Grooma) |
+
+Variabel baru: `GROOMA_BILLING_MIDTRANS_SERVER_KEY`, `GROOMA_BILLING_MIDTRANS_CLIENT_KEY`, `GROOMA_BILLING_MIDTRANS_IS_PRODUCTION` — ada di `.env.example` dan wajib di semua deployment.
+
+### Yang disentuh saat implementasi
+
+1. **`lib/midtrans.ts` diparameterisasi**: `createQrisCharge`/`getTransactionStatus`/`verifyNotificationSignature` sekarang menerima `credentialSet: "POS" | "BILLING"` sebagai parameter wajib (tidak ada default, supaya tidak ada pemanggil yang diam-diam jatuh ke kredensial yang salah). Cache client Midtrans juga per-set, bukan satu instance global.
+2. **`routeMidtransNotification` (`services/paymentService.ts`) direstrukturisasi**: pengecekan prefix `order_id` (`GRM-SUB` vs lainnya) sekarang terjadi **sebelum** verifikasi signature, khusus untuk memilih kredensial mana yang dipakai — bukan untuk keputusan bisnis apa pun (itu tetap terjadi setelahnya, tidak berubah). `processMidtransNotification`'s defense-in-depth check-nya sendiri secara eksplisit memakai `"POS"`; `processSubscriptionInvoiceNotification`-nya `billingService.ts` memakai `"BILLING"`.
+3. **`lib/paymentConfig.ts` punya fail-fast baru yang tidak bersyarat pada mode**: deployment mana pun yang `GROOMA_BILLING_MIDTRANS_SERVER_KEY`/`CLIENT_KEY` kosong gagal start — terpisah dari pengecekan `MANAGED` yang sudah ada, dan berlaku juga untuk deployment `SELF_RECORDED`.
+4. **`vitest.setup.ts`** diberi nilai default test untuk kedua variabel baru, supaya seluruh test yang secara transitif meng-import `lib/paymentConfig.ts` tidak ikut gagal akibat fail-fast baru di atas.
+
+Perilaku POS yang sudah berjalan (termasuk `SELF_RECORDED`, yang sengaja tidak punya kredensial `MIDTRANS_*` sama sekali) tidak berubah — hanya kini eksplisit memakai `credentialSet: "POS"` di setiap pemanggilan, bukan implisit seperti sebelumnya.

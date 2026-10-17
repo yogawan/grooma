@@ -77,7 +77,9 @@ export const customerPaths = {
           },
         },
         "401": { description: "Not authenticated" },
-        "402": { $ref: "#/components/responses/SubscriptionRequired" },
+        "402": {
+          $ref: "#/components/responses/SubscriptionRequiredAgentExempt",
+        },
         "403": { description: "Not HOST/AGENT" },
       },
     },
@@ -102,7 +104,9 @@ export const customerPaths = {
         },
         "400": { description: "Validation error" },
         "401": { description: "Not authenticated" },
-        "402": { $ref: "#/components/responses/SubscriptionRequired" },
+        "402": {
+          $ref: "#/components/responses/SubscriptionRequiredAgentExempt",
+        },
         "403": { description: "Not HOST/AGENT" },
       },
     },
@@ -116,7 +120,9 @@ export const customerPaths = {
       responses: {
         "200": { description: "Customer detail", content: customerResponse },
         "401": { description: "Not authenticated" },
-        "402": { $ref: "#/components/responses/SubscriptionRequired" },
+        "402": {
+          $ref: "#/components/responses/SubscriptionRequiredAgentExempt",
+        },
         "403": { description: "Not HOST/AGENT" },
         "404": { description: "Customer not found" },
       },
@@ -134,7 +140,9 @@ export const customerPaths = {
         "200": { description: "Customer updated", content: customerResponse },
         "400": { description: "Validation error" },
         "401": { description: "Not authenticated" },
-        "402": { $ref: "#/components/responses/SubscriptionRequired" },
+        "402": {
+          $ref: "#/components/responses/SubscriptionRequiredAgentExempt",
+        },
         "403": { description: "Not HOST/AGENT" },
         "404": { description: "Customer not found" },
       },

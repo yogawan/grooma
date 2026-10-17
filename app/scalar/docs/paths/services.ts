@@ -61,7 +61,9 @@ export const servicePaths = {
           },
         },
         "401": { description: "Not authenticated" },
-        "402": { $ref: "#/components/responses/SubscriptionRequired" },
+        "402": {
+          $ref: "#/components/responses/SubscriptionRequiredAgentExempt",
+        },
         "403": { description: "Not HOST/AGENT" },
       },
     },
@@ -111,7 +113,9 @@ export const servicePaths = {
       responses: {
         "200": { description: "Service detail", content: serviceResponse },
         "401": { description: "Not authenticated" },
-        "402": { $ref: "#/components/responses/SubscriptionRequired" },
+        "402": {
+          $ref: "#/components/responses/SubscriptionRequiredAgentExempt",
+        },
         "403": { description: "Not HOST/AGENT" },
         "404": { description: "Service not found" },
       },

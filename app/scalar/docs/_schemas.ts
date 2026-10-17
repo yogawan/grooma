@@ -15,12 +15,25 @@ export const securitySchemes = {
 };
 
 // requireAuth (lib/authorization.ts) enforces this by default on every
-// endpoint — only the handful marked subscriptionExempt there (profile,
-// auth/me, change-password, /subscription*) never return it.
+// endpoint. Which of the two shapes below applies is decided by that
+// endpoint's `subscriptionPolicy` (§23.4.1): ENFORCED -> SubscriptionRequired,
+// EXEMPT_AGENT -> SubscriptionRequiredAgentExempt. Only the handful marked
+// EXEMPT_ALL there (profile, auth/me, change-password, /subscription*) never
+// return 402 at all and so reference neither.
+//
+// These were one combined component until §23.4.1 split the behaviour by
+// role; a single description can no longer state the rule correctly.
 export const responses = {
+  // policy: ENFORCED
   SubscriptionRequired: {
     description:
-      "HOST's subscription is PAST_DUE, EXPIRED, or CANCELLED (§23.4). AGENT is never blocked.",
+      "The HOST's subscription is PAST_DUE, EXPIRED, or CANCELLED (§23.4). Refused for BOTH roles — an AGENT is blocked here too, because this endpoint is not part of the POS flow §23.4.1 keeps open.",
+  },
+
+  // policy: EXEMPT_AGENT
+  SubscriptionRequiredAgentExempt: {
+    description:
+      "The HOST's subscription is PAST_DUE, EXPIRED, or CANCELLED (§23.4). Returned to a HOST only — an AGENT may still call this endpoint while the subscription is lapsed, because it is part of the POS flow needed to finish serving a customer already in the chair (§23.4.1).",
   },
 };
 

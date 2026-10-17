@@ -43,6 +43,30 @@ export async function getHostSubscriptionStatus(
   return subscription?.status || null;
 }
 
+// The same status, but resolved WITHOUT knowing the HOST's id — needed to
+// gate an AGENT (§23.4.1), whose own id is not the `host` of any
+// Subscription. There is deliberately no path from an AGENT to its HOST in
+// the data model: `Branch` carries no host reference (§5.2), so
+// getHostSubscriptionStatus(agent.id) would always find nothing and return
+// null, which reads as "no subscription yet" and silently allows
+// everything. That is the exact failure this function exists to avoid.
+//
+// Correct because one deployment serves exactly one HOST and therefore
+// holds exactly one Subscription (§3.5; `Subscription.host` is unique and
+// scripts/seedUser.ts refuses to seed a second HOST). If the §3.5 "multiple
+// co-owner HOSTs in one deployment" edge case ever becomes real, this picks
+// one of their subscriptions arbitrarily and which one gates the AGENT is
+// undefined — revisit together with that scenario, not before.
+export async function getDeploymentSubscriptionStatus(): Promise<
+  string | null
+> {
+  await connectDB();
+
+  const subscription = await SubscriptionModel.findOne({}).lean();
+
+  return subscription?.status || null;
+}
+
 // Helper: Check if HOST has active subscription
 export async function isHostSubscriptionActive(
   hostId: string,

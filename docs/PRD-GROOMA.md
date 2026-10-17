@@ -1594,9 +1594,49 @@ Section ini ditambahkan di v1.1 untuk mendefinisikan monetisasi platform: HOST m
 ## 23.4. Access Control saat Subscription Tidak Aktif
 
 - Ketika `Subscription.status` bernilai `PAST_DUE` atau `EXPIRED`, akun HOST yang bersangkutan hanya dapat mengakses endpoint `/subscription*` dan `/profile`; seluruh endpoint lain pada §7.2–§7.10 mengembalikan error otorisasi.
-- Pembatasan ini **hanya berlaku untuk akun HOST yang bersangkutan**. AGENT pada cabang manapun tetap dapat login dan membuat transaksi seperti biasa — subscription adalah biaya lisensi akun admin, bukan syarat operasional POS cabang (§23.1).
+- **[DIREVISI 2026-10-17 — lihat §23.4.1]** Pembatasan di atas tidak lagi berarti "AGENT tidak pernah diblokir sama sekali". Aturan sebelumnya ("AGENT pada cabang manapun tetap dapat login dan membuat transaksi seperti biasa, titik") dianggap terlalu longgar: itu berarti AGENT tetap punya akses **penuh tanpa batas** — termasuk inventaris dan dashboard, bukan cuma transaksi — selama HOST yang menunggak tidak pernah bayar sama sekali. Kebijakan baru: **AGENT dibatasi ke fitur yang dibutuhkan untuk tetap melayani customer yang sedang ada di depan**, bukan dibebaskan dari pembatasan sepenuhnya. Detail allowlist-nya di §23.4.1.
 - `GROOMA_ADMIN` dapat melakukan override manual (`PATCH /admin/subscriptions/:id/status`) untuk kasus dukungan pelanggan, misalnya pembayaran manual di luar sistem atau dispute.
 - Gunakan HTTP `402 Payment Required` ketika permintaan ditolak murni karena subscription tidak aktif, sebagai tambahan terhadap tabel status pada §14.
+
+## 23.4.1. Allowlist AGENT saat Subscription HOST Tidak Aktif
+
+> **Status: diimplementasikan (2026-10-17).** `lib/authorization.ts` sekarang memakai `SubscriptionAccessPolicy` (`ENFORCED`/`EXEMPT_ALL`/`EXEMPT_AGENT`) dan early-return `if (user.role !== "HOST")` yang lama sudah dihapus total. 14 handler ditandai `EXEMPT_AGENT`; sisanya default `ENFORCED`. Lihat `lib/subscriptionEnforcement.test.ts` (28 test) — test AGENT di situ sebelumnya menyatakan kebalikan dari aturan ini dan memang ditulis ulang, bukan ditambah.
+
+### Kenapa aturan lama berbahaya
+
+Karena pengecualiannya berbasis **role**, bukan berbasis **fitur**, AGENT tetap punya akses penuh ke **segala sesuatu** yang biasa dia akses — termasuk inventaris dan dashboard, yang tidak ada hubungannya dengan "melayani customer yang sedang menunggu" — selama HOST tidak pernah membayar sama sekali. Tidak ada tekanan apa pun ke HOST untuk membayar kalau operasional cabang berjalan 100% normal tanpa batas waktu.
+
+### Aturan baru: dibatasi ke alur POS yang menyelesaikan satu transaksi
+
+Ketika `Subscription.status` milik HOST bernilai `PAST_DUE`/`EXPIRED`/`CANCELLED`, **AGENT di cabang HOST tersebut** hanya dapat mengakses endpoint berikut — cukup untuk mencari/menambah customer, melihat harga layanan, membuat dan menyelesaikan transaksi, serta memproses pembayarannya:
+
+| Method | Endpoint |
+|---|---|
+| GET, POST | `/api/v1/customers` |
+| GET, PATCH | `/api/v1/customers/{id}` |
+| GET | `/api/v1/services`, `/api/v1/services/{id}` |
+| POST | `/api/v1/transactions` |
+| GET | `/api/v1/transactions`, `/api/v1/transactions/{id}` |
+| POST | `/api/v1/transactions/{id}/complete` |
+| POST | `/api/v1/transactions/{id}/cancel` |
+| GET | `/api/v1/transactions/{id}/receipt` |
+| POST | `/api/v1/payments/qris` |
+| GET | `/api/v1/payments/{id}` |
+
+Ditambah yang sudah exempt untuk semua role tanpa syarat (tidak berubah): `/profile`, `/auth/me`, `/auth/change-password`.
+
+**Tetap terkunci untuk AGENT** selama HOST menunggak — ini yang berubah dari aturan lama: `/branches`, seluruh `/inventory/*`, seluruh `/dashboard/*`, dan `/transactions/{id}/change-requests`. Tidak satu pun dari ini dibutuhkan untuk menyelesaikan transaksi customer yang sedang menunggu; mengunci semuanya mengembalikan tekanan ke HOST untuk membayar tanpa menyandera pelanggan yang sedang di kursi.
+
+### Mekanisme: gating per-role tetap, tapi allowlist-nya diperluas untuk AGENT — bukan dihapus untuk AGENT
+
+Perbaikannya **bukan** menjadikan endpoint di atas exempt untuk siapa saja yang memanggilnya (itu justru akan ikut melonggarkan pembatasan HOST yang menunggak, padahal §23.4 sengaja membuat HOST seketat mungkin). `EXEMPT_AGENT` berarti *AGENT lewat, HOST tetap ditolak di endpoint yang sama persis* — ini diuji eksplisit di `lib/subscriptionEnforcement.test.ts`.
+
+Konsekuensi: **HOST yang menunggak TIDAK ikut melonggar** dari perubahan ini — HOST tetap persis seketat sebelumnya (§23.4 baris pertama, tidak berubah). Yang berubah murni cakupan akses AGENT.
+
+### Dua hal yang ditemukan saat implementasi
+
+1. **Gating AGENT nyaris gagal diam-diam.** `getHostSubscriptionStatus(user.id)` mencari `Subscription` dengan `host: <id pemanggil>`. Untuk AGENT, `user.id` adalah id AGENT — tidak ada `Subscription` dengan host itu, jadi hasilnya selalu `null`, yang dibaca sebagai "belum ada subscription" dan **meloloskan semuanya**. Dan tidak ada jalur dari AGENT ke HOST-nya di data model: `Branch` sengaja tidak menyimpan referensi HOST (§5.2). Ditambahkan `getDeploymentSubscriptionStatus()` di `services/subscriptionService.ts` yang membaca satu-satunya `Subscription` milik deployment (valid karena §3.5: satu deployment = satu HOST = satu Subscription). HOST tetap dicari lewat id-nya sendiri, supaya perilaku HOST terbukti tidak berubah.
+2. **Biaya query di hot path dihindari.** Pengecekan ini butuh status subscription, yang berarti query tambahan untuk AGENT yang sebelumnya tidak pernah query sama sekali. Karena AGENT pada endpoint `EXEMPT_AGENT` lolos *apa pun* statusnya, `requireActiveSubscription` sengaja return lebih awal sebelum query untuk kombinasi itu — jadi alur POS (yang paling sering dipanggil kasir) tetap bebas query tambahan. Query baru hanya terjadi saat AGENT menyentuh endpoint `ENFORCED` (inventaris/dashboard/cabang), yang bukan jalur per-transaksi.
 
 ## 23.5. Security & Idempotency
 

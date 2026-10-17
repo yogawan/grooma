@@ -3,12 +3,29 @@ import type { NextRequest } from "next/server";
 import { getCurrentUser, type SessionUser } from "./auth";
 import { Errors } from "./errors";
 
+// §23.4/§23.4.1 — three distinct levels, not a boolean. The earlier
+// boolean couldn't express the middle case, which is the whole point of
+// §23.4.1: an endpoint that stays open to AGENT while still being closed to
+// a lapsed HOST.
+//
+//   ENFORCED      default. Both roles refused while the subscription is
+//                 lapsed. Anything new is this until someone opts out, so a
+//                 freshly written endpoint is gated by omission.
+//   EXEMPT_ALL    reachable by both roles even while lapsed — /subscription*
+//                 (so the HOST can actually pay), /profile, and the auth
+//                 endpoints a blocked HOST still needs to identify itself,
+//                 rotate its password, or sign out.
+//   EXEMPT_AGENT  AGENT proceeds, HOST is still refused. The POS flow
+//                 (§23.4.1): a customer already in the chair must not be
+//                 held hostage by the owner's unpaid invoice, but the owner
+//                 gets no relief from it either.
+export type SubscriptionAccessPolicy =
+  | "ENFORCED"
+  | "EXEMPT_ALL"
+  | "EXEMPT_AGENT";
+
 export interface RequireAuthOptions {
-  // Set on the handful of endpoints §23.4 keeps reachable while a
-  // subscription is lapsed (/subscription*, /profile) plus the auth
-  // endpoints, which a blocked HOST still needs in order to see who it is,
-  // rotate its password, or sign out.
-  subscriptionExempt?: boolean;
+  subscriptionPolicy?: SubscriptionAccessPolicy;
 }
 
 // §6.3 order: 1. session validation, 2. user status validation — both are
@@ -28,9 +45,7 @@ export async function requireAuth(
     throw Errors.unauthenticated();
   }
 
-  if (!options.subscriptionExempt) {
-    await requireActiveSubscription(user);
-  }
+  await requireActiveSubscription(user, options.subscriptionPolicy);
 
   return user;
 }
@@ -73,15 +88,19 @@ const BLOCKING_SUBSCRIPTION_STATUSES = new Set([
 // run (docs/PROVISIONING-HOST.md), and blocking on absence would brick the
 // deployment before its first invoice exists. Only an explicitly non-paying
 // status revokes access.
+//
+// §23.4.1 changed the shape of this function: there is deliberately NO
+// `user.role !== "HOST"` early return any more. That blanket skip meant an
+// AGENT kept unrestricted access to everything — inventory, dashboard, the
+// lot — for as long as a HOST never paid, which left no pressure to pay at
+// all. AGENT is now gated per-endpoint exactly like HOST; the difference is
+// only which endpoints each role is exempt on.
 export function assertSubscriptionAllowsAccess(
   user: SessionUser,
   subscriptionStatus: string | null,
+  policy: SubscriptionAccessPolicy = "ENFORCED",
 ): void {
-  // §23.4: AGENT is never blocked — a lapsed HOST subscription must not stop
-  // a branch from trading. Written as `!== "HOST"` rather than `=== "AGENT"`
-  // so a role added later is non-blocking by default; only the subscribing
-  // role is ever gated on payment.
-  if (user.role !== "HOST") {
+  if (policy === "EXEMPT_ALL") {
     return;
   }
 
@@ -89,27 +108,50 @@ export function assertSubscriptionAllowsAccess(
     return;
   }
 
-  if (BLOCKING_SUBSCRIPTION_STATUSES.has(subscriptionStatus)) {
-    throw Errors.paymentRequired();
+  if (!BLOCKING_SUBSCRIPTION_STATUSES.has(subscriptionStatus)) {
+    return;
   }
+
+  // Lapsed from here down. The POS flow stays open to AGENT only — a HOST
+  // hitting the very same endpoint is still refused (§23.4.1).
+  if (policy === "EXEMPT_AGENT" && user.role === "AGENT") {
+    return;
+  }
+
+  throw Errors.paymentRequired();
 }
 
 // §23.4 enforcement with the status read from the database. Throws a 402
 // AppError — this previously threw a bare `new Error("PAYMENT_REQUIRED")`,
 // which handleApiError has no case for, so it would have surfaced as a 500.
-// It was also never called from anywhere.
 export async function requireActiveSubscription(
   user: SessionUser,
+  policy: SubscriptionAccessPolicy = "ENFORCED",
 ): Promise<void> {
-  // Skip the query entirely for roles that can never be blocked.
-  if (user.role !== "HOST") {
+  if (policy === "EXEMPT_ALL") {
     return;
   }
 
-  const { getHostSubscriptionStatus } = await import(
-    "@/services/subscriptionService"
-  );
-  const status = await getHostSubscriptionStatus(user.id);
+  // An AGENT on an EXEMPT_AGENT endpoint proceeds whatever the status is, so
+  // don't pay for the lookup at all. This deliberately keeps the POS hot
+  // path query-free: the only endpoints where an AGENT now costs an extra
+  // read are the ENFORCED ones (inventory, dashboard, branches), which are
+  // not what a cashier hits per sale.
+  if (policy === "EXEMPT_AGENT" && user.role === "AGENT") {
+    return;
+  }
 
-  assertSubscriptionAllowsAccess(user, status);
+  const { getDeploymentSubscriptionStatus, getHostSubscriptionStatus } =
+    await import("@/services/subscriptionService");
+
+  // A HOST is looked up by its own id — correct even in the §3.5 multi-HOST
+  // edge case. An AGENT has no route to its HOST in the data model at all,
+  // so it falls back to the deployment's single Subscription; see
+  // getDeploymentSubscriptionStatus for why that is sound here.
+  const status =
+    user.role === "HOST"
+      ? await getHostSubscriptionStatus(user.id)
+      : await getDeploymentSubscriptionStatus();
+
+  assertSubscriptionAllowsAccess(user, status, policy);
 }

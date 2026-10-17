@@ -20,7 +20,7 @@
 - CRUD inventaris di cabangnya sendiri
 - Ajukan perubahan transaksi (tidak bisa approve/reject)
 - Lihat dashboard & profil cabangnya
-- Login tidak pernah terblokir oleh status subscription HOST
+- Login tidak pernah terblokir oleh status subscription HOST. **[Direvisi 2026-10-17 — PRD §23.4.1]** Login sendiri tetap tidak pernah terblokir, tapi dulu AGENT juga bebas akses *segala* fitur tanpa batas waktu selama HOST menunggak (termasuk inventaris & dashboard). Sekarang dibatasi ke alur penyelesaian transaksi saja (customer, service, transaction, payment) — inventaris, dashboard, cabang, dan pengajuan perubahan transaksi ikut terkunci buat AGENT juga saat HOST `PAST_DUE`/`EXPIRED`/`CANCELLED`.
 
 ## GROOMA_ADMIN — tidak ada di backend ini
 *Role admin platform **sudah dipindahkan ke backend admin terpisah** yang memakai database yang sama (PRD §3.6).*

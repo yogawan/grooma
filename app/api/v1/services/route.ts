@@ -11,7 +11,9 @@ import { createService, listServices } from "@/services/serviceService";
 import { createServiceSchema } from "@/validations/serviceSchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  const user = await requireAuth(request);
+  const user = await requireAuth(request, {
+    subscriptionPolicy: "EXEMPT_AGENT",
+  });
   requireRole(user, ["HOST", "AGENT"]);
 
   const services = await listServices(user.role);

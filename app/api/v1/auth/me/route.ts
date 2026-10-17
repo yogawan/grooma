@@ -7,7 +7,7 @@ import { connectDB } from "@/lib/mongodb";
 import BranchModel from "@/models/Branch";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  const user = await requireAuth(request, { subscriptionExempt: true });
+  const user = await requireAuth(request, { subscriptionPolicy: "EXEMPT_ALL" });
 
   let branchName: string | null = null;
   if (user.branch) {

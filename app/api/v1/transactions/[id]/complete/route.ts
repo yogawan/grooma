@@ -6,7 +6,9 @@ import { completeTransaction } from "@/services/transactionService";
 
 export const POST = withErrorHandling<{ id: string }>(
   async (request: NextRequest, { params }) => {
-    const user = await requireAuth(request);
+    const user = await requireAuth(request, {
+      subscriptionPolicy: "EXEMPT_AGENT",
+    });
     requireRole(user, ["AGENT"]);
     const { id } = await params;
 

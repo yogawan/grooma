@@ -12,7 +12,9 @@ import { updateCustomerSchema } from "@/validations/customerSchema";
 
 export const GET = withErrorHandling<{ id: string }>(
   async (request: NextRequest, { params }) => {
-    const user = await requireAuth(request);
+    const user = await requireAuth(request, {
+      subscriptionPolicy: "EXEMPT_AGENT",
+    });
     requireRole(user, ["HOST", "AGENT"]);
     const { id } = await params;
 
@@ -23,7 +25,9 @@ export const GET = withErrorHandling<{ id: string }>(
 
 export const PATCH = withErrorHandling<{ id: string }>(
   async (request: NextRequest, { params }) => {
-    const user = await requireAuth(request);
+    const user = await requireAuth(request, {
+      subscriptionPolicy: "EXEMPT_AGENT",
+    });
     requireRole(user, ["HOST", "AGENT"]);
     const { id } = await params;
 

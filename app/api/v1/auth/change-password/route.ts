@@ -23,7 +23,9 @@ const CHANGE_PASSWORD_RATE_LIMIT = 5;
 const CHANGE_PASSWORD_RATE_WINDOW_MS = 15 * 60 * 1000;
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  const sessionUser = await requireAuth(request, { subscriptionExempt: true });
+  const sessionUser = await requireAuth(request, {
+    subscriptionPolicy: "EXEMPT_ALL",
+  });
 
   const rateLimit = await checkRateLimit(
     `change-password:${sessionUser.id}`,

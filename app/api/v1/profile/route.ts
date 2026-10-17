@@ -14,13 +14,13 @@ import { updateProfileSchema } from "@/validations/userSchema";
 // profile (§3.2 matrix — "own profile only" applies equally to HOST and
 // AGENT), and no session can hold any other role (§3.6).
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  const user = await requireAuth(request, { subscriptionExempt: true });
+  const user = await requireAuth(request, { subscriptionPolicy: "EXEMPT_ALL" });
   const profile = await getOwnProfile(user);
   return successResponse({ user: profile });
 });
 
 export const PATCH = withErrorHandling(async (request: NextRequest) => {
-  const user = await requireAuth(request, { subscriptionExempt: true });
+  const user = await requireAuth(request, { subscriptionPolicy: "EXEMPT_ALL" });
 
   const parsed = updateProfileSchema.safeParse(await parseJsonBody(request));
   if (!parsed.success) {

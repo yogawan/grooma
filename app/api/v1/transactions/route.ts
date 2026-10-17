@@ -23,7 +23,9 @@ import {
 } from "@/validations/transactionSchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  const user = await requireAuth(request);
+  const user = await requireAuth(request, {
+    subscriptionPolicy: "EXEMPT_AGENT",
+  });
   requireRole(user, ["HOST", "AGENT"]);
 
   const queryObject = Object.fromEntries(
@@ -42,7 +44,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 });
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  const user = await requireAuth(request);
+  const user = await requireAuth(request, {
+    subscriptionPolicy: "EXEMPT_AGENT",
+  });
   // DoD §21 #5: HOST cannot create transactions — AGENT only.
   requireRole(user, ["AGENT"]);
 

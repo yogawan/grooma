@@ -11,7 +11,9 @@ import { createCustomer, listCustomers } from "@/services/customerService";
 import { createCustomerSchema } from "@/validations/customerSchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
-  const user = await requireAuth(request);
+  const user = await requireAuth(request, {
+    subscriptionPolicy: "EXEMPT_AGENT",
+  });
   requireRole(user, ["HOST", "AGENT"]);
 
   const search = request.nextUrl.searchParams.get("search") ?? undefined;
@@ -20,7 +22,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
 });
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  const user = await requireAuth(request);
+  const user = await requireAuth(request, {
+    subscriptionPolicy: "EXEMPT_AGENT",
+  });
   requireRole(user, ["HOST", "AGENT"]);
 
   const parsed = createCustomerSchema.safeParse(await parseJsonBody(request));

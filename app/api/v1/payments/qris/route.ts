@@ -11,7 +11,9 @@ import { createQrisPayment } from "@/services/paymentService";
 import { createQrisPaymentSchema } from "@/validations/paymentSchema";
 
 export const POST = withErrorHandling(async (request: NextRequest) => {
-  const user = await requireAuth(request);
+  const user = await requireAuth(request, {
+    subscriptionPolicy: "EXEMPT_AGENT",
+  });
   requireRole(user, ["AGENT"]);
 
   const parsed = createQrisPaymentSchema.safeParse(

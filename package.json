@@ -10,7 +10,8 @@
     "format": "biome format --write",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "seed:host": "tsx --env-file=.env.local scripts/seedHost.ts"
+    "seed:host": "tsx --env-file=.env.local scripts/seedHost.ts",
+    "seed:plan": "tsx --env-file=.env.local scripts/seedPlan.ts"
   },
   "dependencies": {
     "@scalar/nextjs-api-reference": "^0.12.10",

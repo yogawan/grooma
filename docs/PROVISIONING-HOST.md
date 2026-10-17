@@ -28,6 +28,8 @@ Daftarkan akun Midtrans **atas nama bisnis HOST tersebut**, lalu ambil Server Ke
 
 Lewati langkah ini sepenuhnya untuk `SELF_RECORDED`.
 
+> **Akun Midtrans di langkah ini hanya untuk transaksi POS.** Tagihan subscription HOST ke Grooma selalu memakai akun Midtrans milik Grooma sendiri (§23.1/§23.8, kredensial `GROOMA_BILLING_MIDTRANS_*` di langkah 3), terlepas dari mode di atas — dua akun yang sepenuhnya terpisah, jangan dicampur.
+
 ## 3. Buat Deployment & Set Environment Variables
 
 Lihat `.env.example` untuk daftar lengkap. Yang berbeda per deployment:
@@ -47,11 +49,20 @@ PAYMENT_INTEGRATION_MODE=MANAGED     # atau SELF_RECORDED (langkah 0)
 MIDTRANS_SERVER_KEY=...
 MIDTRANS_CLIENT_KEY=...
 MIDTRANS_IS_PRODUCTION=true
+
+# WAJIB di SEMUA deployment, termasuk SELF_RECORDED — akun Midtrans Grooma
+# sendiri untuk menagih subscription HOST, sepenuhnya terpisah dari akun di
+# atas (§23.1/§23.8). Nilainya SAMA di seluruh fleet deployment (satu akun
+# Grooma), bukan per-HOST seperti MIDTRANS_* di atas — minta ke tim internal,
+# jangan buat akun baru per deployment.
+GROOMA_BILLING_MIDTRANS_SERVER_KEY=...
+GROOMA_BILLING_MIDTRANS_CLIENT_KEY=...
+GROOMA_BILLING_MIDTRANS_IS_PRODUCTION=true
 ```
 
-**Jangan menyalin `SESSION_SECRET` atau `INTERNAL_CRON_SECRET` antar deployment.** Secret yang sama di banyak instance berarti satu kebocoran membuka semuanya.
+**Jangan menyalin `SESSION_SECRET` atau `INTERNAL_CRON_SECRET` antar deployment.** Secret yang sama di banyak instance berarti satu kebocoran membuka semuanya. `GROOMA_BILLING_MIDTRANS_*` adalah pengecualian yang disengaja — nilai itu **harus** sama di semua deployment.
 
-Aplikasi sengaja **gagal start** bila `PAYMENT_INTEGRATION_MODE=MANAGED` tetapi kredensial Midtrans kosong (`lib/paymentConfig.ts`) — kesalahan konfigurasi muncul saat deploy, bukan saat kasir pertama kali melayani pelanggan.
+Aplikasi sengaja **gagal start** bila `PAYMENT_INTEGRATION_MODE=MANAGED` tetapi kredensial Midtrans HOST kosong, **atau** bila `GROOMA_BILLING_MIDTRANS_SERVER_KEY`/`CLIENT_KEY` kosong apa pun mode-nya (`lib/paymentConfig.ts`) — kesalahan konfigurasi muncul saat deploy, bukan saat kasir pertama kali melayani pelanggan atau saat invoice subscription pertama gagal dibuat.
 
 ### `TRUSTED_PROXY_HOP_COUNT` — wajib dan tidak boleh ditebak
 
@@ -69,7 +80,15 @@ Aplikasi **gagal start** di produksi bila variabel ini tidak di-set — disengaj
 
 **Cara memverifikasi:** setelah deploy, kirim request dengan `X-Forwarded-For: 1.2.3.4` palsu. Dengan nilai yang benar, alamat itu harus diabaikan — bukan dipakai sebagai identitas rate limit.
 
-## 4. Seed Akun Awal
+## 4. Seed Plan, lalu Seed Akun Awal
+
+**Urutan ini penting.** `seed:host` sekarang sekaligus membuat `Subscription` awal HOST (§23.7), yang perlu mereferensikan `SubscriptionPlan` yang sudah ada — jalankan `seed:plan` dulu:
+
+```bash
+npm run seed:plan
+```
+
+Idempoten dan tanpa env var wajib — membuat satu `SubscriptionPlan` default (Rp50.000/bulan, PRD §23.1) kalau belum ada satu pun. Skip langkah ini kalau database sudah punya plan (mis. deployment lama yang sedang di-upgrade).
 
 Database baru masih kosong, dan `POST /users` butuh HOST yang sudah login — jadi HOST pertama **harus** lewat script:
 
@@ -77,14 +96,14 @@ Database baru masih kosong, dan `POST /users` butuh HOST yang sudah login — ja
 SEED_HOST_USERNAME=owner \
 SEED_HOST_PASSWORD='<password kuat, unik per deployment>' \
 SEED_HOST_NAME='Nama Pemilik' \
-  bun run seed:host
+  npm run seed:host
 ```
 
-Script ini idempoten — aman dijalankan ulang, dan tidak akan menimpa password akun yang sudah ada. Ia menolak berjalan tanpa env var, tanpa fallback hardcoded, dan juga **menolak** bila deployment ini sudah memiliki akun HOST (satu deployment = satu HOST, PRD §3.5).
+Script ini idempoten — aman dijalankan ulang, dan tidak akan menimpa password akun yang sudah ada. Ia menolak berjalan tanpa env var, tanpa fallback hardcoded, dan juga **menolak** bila deployment ini sudah memiliki akun HOST (satu deployment = satu HOST, PRD §3.5). Kalau dijalankan ulang terhadap HOST yang sudah ada tapi belum punya `Subscription` (mis. deployment lama), ia akan membuatkan satu — aman untuk deployment yang di-upgrade dari versi sebelum §23.7.
 
 > **Tidak ada langkah seed admin di sini.** Backend ini hanya mengenal role `HOST` dan `AGENT`. Akun `GROOMA_ADMIN` dibuat oleh backend admin terpisah yang memakai database yang sama, jadi tidak ada `seed:admin` pada provisioning deployment — lihat §3.6 PRD. Backend ini pun tidak akan menerbitkan session untuk akun admin walaupun barisnya ada di database yang sama.
 
-**Subscription awal tidak dibuat oleh provisioning**, dan itu disengaja: HOST tanpa record `Subscription` tetap diizinkan mengakses aplikasi, sehingga deployment baru dapat langsung dipakai sebelum siklus billing pertama menerbitkan invoice. Hanya status non-paying eksplisit (`PAST_DUE`/`EXPIRED`/`CANCELLED`) yang memicu HTTP 402 (PRD §23.4).
+**Subscription awal dibuat otomatis oleh `seed:host`** (§23.7): `status: ACTIVE`, `currentPeriodEnd` sebulan dari tanggal seed — trial gratis sebulan sebelum tagihan pertama. Tidak ada `SubscriptionInvoice` yang dibuat saat ini; cron billing yang sudah ada (langkah terakhir di checklist) otomatis menerbitkan tagihan pertama tepat di tanggal yang sama bulan berikutnya begitu `currentPeriodEnd` tercapai. Status non-paying eksplisit (`PAST_DUE`/`EXPIRED`/`CANCELLED`) memicu HTTP 402 (PRD §23.4) — `ACTIVE` berarti akses penuh tanpa batasan.
 
 Sisanya (cabang, AGENT, layanan) dibuat normal lewat API oleh akun HOST tadi.
 
@@ -99,9 +118,10 @@ Arahkan base URL aplikasi mobile ke endpoint deployment ini, lalu build dan dist
 - [ ] Mode pembayaran ditentukan (`MANAGED` / `SELF_RECORDED`)
 - [ ] Database baru dibuat, `MONGODB_URI` dicatat
 - [ ] Akun Midtrans HOST dibuat — *skip bila `SELF_RECORDED`*
-- [ ] Deployment dibuat; seluruh env var di-set; `SESSION_SECRET` & `INTERNAL_CRON_SECRET` unik
-- [ ] Deployment berhasil start (bila gagal, cek pasangan mode ↔ kredensial Midtrans)
-- [ ] HOST pertama di-seed lewat `bun run seed:host`
+- [ ] Deployment dibuat; seluruh env var di-set (termasuk `GROOMA_BILLING_MIDTRANS_*`, wajib di semua mode); `SESSION_SECRET` & `INTERNAL_CRON_SECRET` unik
+- [ ] Deployment berhasil start (bila gagal, cek pasangan mode ↔ kredensial Midtrans HOST, dan `GROOMA_BILLING_MIDTRANS_*`)
+- [ ] `npm run seed:plan` dijalankan
+- [ ] HOST pertama di-seed lewat `npm run seed:host`
 - [ ] Login HOST diuji; satu cabang dibuat
 - [ ] Satu transaksi uji dibuat — `MANAGED`: QRIS muncul & webhook masuk; `SELF_RECORDED`: transaksi langsung `PAID`
 - [ ] Scheduled job billing diarahkan ke `/api/v1/internal/subscriptions/run-billing-cycle` deployment ini

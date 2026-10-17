@@ -13,6 +13,8 @@
 import mongoose from "mongoose";
 import { hashPassword } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
+import SubscriptionModel from "@/models/Subscription";
+import SubscriptionPlanModel from "@/models/SubscriptionPlan";
 import UserModel from "@/models/User";
 
 export interface SeedUserOptions {
@@ -42,6 +44,57 @@ function requireTrimmedEnv(name: string): string {
 function optionalTrimmedEnv(name: string): string | undefined {
   const value = process.env[name]?.trim();
   return value ? value : undefined;
+}
+
+// Bootstraps the free-trial Subscription a HOST needs before the existing
+// billing-cycle cron (services/billingService.ts) can ever pick it up —
+// PRD §23.7. Deliberately runs for BOTH a brand-new HOST and one that
+// already existed without a Subscription yet (e.g. a HOST seeded before
+// this bootstrap step existed): the goal is "every HOST this script
+// resolves to ends up with exactly one Subscription," not just "new
+// accounts get one." Subscription.host has a unique index, so even a
+// concurrent double-run can't create two for the same HOST.
+async function ensureInitialSubscription(hostId: unknown): Promise<void> {
+  const existingSubscription = await SubscriptionModel.findOne({
+    host: hostId,
+  });
+  if (existingSubscription) {
+    console.log(
+      `Subscription already exists for this HOST (id: ${existingSubscription._id}, status: ${existingSubscription.status}). Skipping.`,
+    );
+    return;
+  }
+
+  // Arbitrary but deterministic: the oldest active plan. There is only ever
+  // one plan in practice today (scripts/seedPlan.ts bootstraps exactly one),
+  // so this isn't a real choice yet — revisit if/when multiple plans exist
+  // and seed:host needs a way to pick among them.
+  const plan = await SubscriptionPlanModel.findOne({ isActive: true }).sort({
+    createdAt: 1,
+  });
+  if (!plan) {
+    throw new Error(
+      "No active SubscriptionPlan exists yet. Run `npm run seed:plan` first " +
+        "— the HOST's initial Subscription needs a plan to reference (PRD §23.7).",
+    );
+  }
+
+  const currentPeriodStart = new Date();
+  const currentPeriodEnd = new Date(currentPeriodStart);
+  currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + 1);
+
+  const subscription = await SubscriptionModel.create({
+    host: hostId,
+    plan: plan._id,
+    status: "ACTIVE",
+    currentPeriodStart,
+    currentPeriodEnd,
+  });
+
+  console.log(
+    `Created Subscription for HOST (id: ${subscription._id}, plan: ${plan.code}). ` +
+      `Free until ${currentPeriodEnd.toISOString().slice(0, 10)} — the existing billing cycle will invoice automatically after that.`,
+  );
 }
 
 // Idempotent: an existing account with the same username is left untouched
@@ -85,46 +138,54 @@ export async function seedUser(options: SeedUserOptions): Promise<void> {
   const existing = await UserModel.findOne({
     username: username.toLowerCase(),
   });
+
+  let hostId: unknown;
+
   if (existing) {
     console.log(
-      `User "${existing.username}" already exists (id: ${existing._id}, role: ${existing.role}). Skipping.`,
+      `User "${existing.username}" already exists (id: ${existing._id}, role: ${existing.role}). Skipping account creation.`,
     );
-    return;
+    hostId = existing._id;
+  } else {
+    // One deployment serves exactly one HOST (PRD §3.5). Seeding a second one
+    // would not break isolation — they would simply share all operational data
+    // — but it contradicts the deployment model and each HOST is billed its
+    // own subscription, so make it an explicit refusal rather than a surprise.
+    // Unconditional now that HOST is the only seedable role — this used to be
+    // guarded by `if (options.role === "HOST")` so the admin seeder could skip
+    // it.
+    const existingHost = await UserModel.findOne({ role: "HOST" })
+      .select("username")
+      .lean();
+
+    if (existingHost) {
+      throw new Error(
+        `This deployment already has a HOST account ("${existingHost.username}"). ` +
+          "One deployment serves one HOST (PRD §3.5) — provision a separate " +
+          "deployment and database for another business, or create additional " +
+          "staff through POST /users as that HOST.",
+      );
+    }
+
+    const created = await UserModel.create({
+      username,
+      password: await hashPassword(password),
+      name,
+      phone,
+      role: options.role,
+      branch: null,
+      status: "ACTIVE",
+    });
+
+    console.log(
+      `Created ${options.role} user "${created.username}" (id: ${created._id}).`,
+    );
+    hostId = created._id;
   }
 
-  // One deployment serves exactly one HOST (PRD §3.5). Seeding a second one
-  // would not break isolation — they would simply share all operational data
-  // — but it contradicts the deployment model and each HOST is billed its
-  // own subscription, so make it an explicit refusal rather than a surprise.
-  // Unconditional now that HOST is the only seedable role — this used to be
-  // guarded by `if (options.role === "HOST")` so the admin seeder could skip
-  // it.
-  const existingHost = await UserModel.findOne({ role: "HOST" })
-    .select("username")
-    .lean();
-
-  if (existingHost) {
-    throw new Error(
-      `This deployment already has a HOST account ("${existingHost.username}"). ` +
-        "One deployment serves one HOST (PRD §3.5) — provision a separate " +
-        "deployment and database for another business, or create additional " +
-        "staff through POST /users as that HOST.",
-    );
-  }
-
-  const created = await UserModel.create({
-    username,
-    password: await hashPassword(password),
-    name,
-    phone,
-    role: options.role,
-    branch: null,
-    status: "ACTIVE",
-  });
-
-  console.log(
-    `Created ${options.role} user "${created.username}" (id: ${created._id}).`,
-  );
+  // Runs regardless of whether the account above was just created or
+  // already existed — see ensureInitialSubscription's own comment for why.
+  await ensureInitialSubscription(hostId);
 }
 
 export async function runSeed(options: SeedUserOptions): Promise<void> {

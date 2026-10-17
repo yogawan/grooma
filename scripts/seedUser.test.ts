@@ -22,6 +22,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 interface UserRow {
+  _id?: string;
   username: string;
   password: string;
   name: string;
@@ -58,6 +59,51 @@ vi.mock("@/models/User", () => ({
   },
 }));
 
+interface PlanRow {
+  _id: string;
+  code: string;
+  isActive: boolean;
+}
+
+let plans: PlanRow[] = [];
+
+vi.mock("@/models/SubscriptionPlan", () => ({
+  default: {
+    findOne: vi.fn((filter: { isActive?: boolean }) => ({
+      sort: () =>
+        Promise.resolve(
+          plans.find((p) => p.isActive === filter.isActive) ?? null,
+        ),
+    })),
+  },
+}));
+
+interface SubscriptionRow {
+  _id: string;
+  host: string;
+  plan: string;
+  status: string;
+  currentPeriodStart: Date;
+  currentPeriodEnd: Date;
+}
+
+let subscriptions: SubscriptionRow[] = [];
+
+vi.mock("@/models/Subscription", () => ({
+  default: {
+    findOne: vi.fn((filter: { host: string }) =>
+      Promise.resolve(
+        subscriptions.find((s) => s.host === filter.host) ?? null,
+      ),
+    ),
+    create: vi.fn(async (doc: Omit<SubscriptionRow, "_id">) => {
+      const created = { ...doc, _id: `sub-${subscriptions.length + 1}` };
+      subscriptions.push(created);
+      return created;
+    }),
+  },
+}));
+
 const { seedUser } = await import("@/scripts/seedUser");
 
 const HOST_OPTS = {
@@ -75,6 +121,11 @@ function setEnv(username: string, password: string, name = "Owner") {
 
 beforeEach(() => {
   users = [];
+  subscriptions = [];
+  // A default active plan exists in every test unless a specific test
+  // clears it — most tests here aren't about the Subscription bootstrap at
+  // all, and shouldn't have to care that seedUser now always needs one.
+  plans = [{ _id: "plan-1", code: "STANDARD", isActive: true }];
   vi.clearAllMocks();
   delete process.env.SEED_HOST_USERNAME;
   delete process.env.SEED_HOST_PASSWORD;
@@ -194,5 +245,83 @@ describe("seedUser optional phone", () => {
     await expect(seedUser(HOST_OPTS_WITH_PHONE)).rejects.toThrow(
       /at most 32 characters/,
     );
+  });
+});
+
+describe("seedUser Subscription bootstrap (§23.7)", () => {
+  function daysBetween(start: Date, end: Date): number {
+    return (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+  }
+
+  it("creates an ACTIVE Subscription, free for ~1 month, for a brand-new HOST", async () => {
+    setEnv("owner", "password123");
+
+    await seedUser(HOST_OPTS);
+
+    expect(subscriptions).toHaveLength(1);
+    expect(subscriptions[0]).toMatchObject({
+      host: "id-1",
+      plan: "plan-1",
+      status: "ACTIVE",
+    });
+    expect(
+      daysBetween(
+        subscriptions[0].currentPeriodStart,
+        subscriptions[0].currentPeriodEnd,
+      ),
+    ).toBeGreaterThanOrEqual(28);
+  });
+
+  it("backfills a Subscription for an existing HOST that doesn't have one yet", async () => {
+    users = [
+      {
+        _id: "existing-host-id",
+        username: "owner",
+        password: "hashed:original",
+        name: "Owner",
+        role: "HOST",
+      },
+    ];
+    setEnv("owner", "irrelevant-does-not-overwrite");
+
+    await seedUser(HOST_OPTS);
+
+    expect(subscriptions).toHaveLength(1);
+    expect(subscriptions[0].host).toBe("existing-host-id");
+  });
+
+  it("does not create a duplicate Subscription when one already exists", async () => {
+    users = [
+      {
+        _id: "existing-host-id",
+        username: "owner",
+        password: "hashed:original",
+        name: "Owner",
+        role: "HOST",
+      },
+    ];
+    subscriptions = [
+      {
+        _id: "sub-existing",
+        host: "existing-host-id",
+        plan: "plan-1",
+        status: "ACTIVE",
+        currentPeriodStart: new Date("2026-01-01"),
+        currentPeriodEnd: new Date("2026-02-01"),
+      },
+    ];
+    setEnv("owner", "password123");
+
+    await seedUser(HOST_OPTS);
+
+    expect(subscriptions).toHaveLength(1);
+    expect(subscriptions[0]._id).toBe("sub-existing");
+  });
+
+  it("throws a clear error when no active SubscriptionPlan exists yet", async () => {
+    plans = [];
+    setEnv("owner", "password123");
+
+    await expect(seedUser(HOST_OPTS)).rejects.toThrow(/seed:plan/);
   });
 });

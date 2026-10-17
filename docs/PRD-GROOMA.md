@@ -1613,3 +1613,37 @@ Mengikuti aturan yang sama dengan §9.3, ditambah:
 - Refund otomatis subscription.
 - Faktur pajak/invoice resmi.
 - Notifikasi reminder otomatis (email/WhatsApp) sebelum jatuh tempo.
+
+## 23.7. Bootstrap Subscription Pertama & Free Trial Satu Bulan
+
+> **Status: diimplementasikan (2026-10-17).** `scripts/seedUser.ts` (dipanggil oleh `seedHost.ts`) sekarang membuat `Subscription` awal setiap kali dijalankan terhadap sebuah HOST — baik yang baru dibuat maupun yang sudah ada tapi belum punya `Subscription`. `scripts/seedPlan.ts` (baru) membuat `SubscriptionPlan` default yang dibutuhkan sebagai prasyarat. `docs/PROVISIONING-HOST.md` §4 sudah diperbarui untuk mencerminkan ini.
+
+### Masalah yang mendasari ini (ditemukan sebelum perbaikan)
+
+Ditemukan saat menelusuri alur billing end-to-end: **tidak ada satu pun kode di seluruh backend ini yang membuat dokumen `Subscription` pertama kali.** `services/billingService.ts`'s `generateSubscriptionInvoice()` mewajibkan `subscriptionId` yang sudah ada; cron job (`POST /internal/subscriptions/run-billing-cycle`) hanya men-query `Subscription` yang statusnya **sudah** `ACTIVE` dan periodenya berakhir, untuk menerbitkan invoice **berikutnya** — ia tidak pernah membuat yang pertama. Backend admin (§3.6) pun hanya mengelola `SubscriptionPlan` dan meng-override status `Subscription` yang **sudah ada**, bukan membuatnya dari nol. Akibatnya, sebelum perbaikan ini, HOST yang baru di-seed tetap berada di kondisi "tanpa `Subscription`, akses penuh tanpa batas" (§23.4, lihat juga `lib/authorization.ts`'s `assertSubscriptionAllowsAccess`) **selamanya** — siklus billing bulanan tidak pernah benar-benar mulai untuk HOST manapun.
+
+### Desain yang diimplementasikan: free trial satu bulan via anchor tanggal, bukan kode billing baru
+
+`scripts/seedUser.ts`'s `ensureInitialSubscription()` membuat satu `Subscription` untuk HOST yang diproses script ini — dipanggil baik setelah akun baru dibuat maupun setelah akun yang sudah ada (idempotent-skip) ditemukan, sehingga HOST yang di-seed sebelum perbaikan ini pun ikut mendapat `Subscription` saat `seed:host` dijalankan ulang:
+
+- `host`: id HOST yang baru dibuat.
+- `plan`: reference ke `SubscriptionPlan` yang **sudah ada** (lihat prasyarat di bawah).
+- `status`: `ACTIVE`.
+- `currentPeriodStart`: tanggal seed (sekarang).
+- `currentPeriodEnd`: tanggal seed **+ 1 bulan kalender** — tanggal yang sama, bulan depan.
+
+**Tidak ada `SubscriptionInvoice` yang dibuat saat seeding.** Sebulan pertama gratis murni karena dua hal yang sudah ada: tidak ada tagihan yang perlu dibayar, dan `status: ACTIVE` itu sendiri sudah berarti akses tanpa batasan apa pun (§23.4) — sama seperti kondisi "tanpa Subscription" sebelumnya, hanya sekarang punya identitas dan tanggal akhir periode yang jelas.
+
+**Mekanisme setelah bulan pertama tidak membutuhkan kode baru sama sekali.** Cron job yang sudah ada men-query persis `{ status: "ACTIVE", currentPeriodEnd: { $lte: now } }` — begitu `currentPeriodEnd` (tanggal seed + 1 bulan) tercapai, subscription ini otomatis ikut terjaring dan `generateSubscriptionInvoice()` yang sudah ada dipanggil seperti biasa, menghasilkan tagihan pertama **tepat di tanggal yang sama bulan berikutnya** — ini yang memenuhi "di tanggal yang sama tapi bulan depan akan ada tagihan" tanpa logika billing baru. Satu-satunya perubahan kode yang benar-benar dibutuhkan adalah membuat `Subscription` awal itu sendiri; seluruh mesin generate-invoice, webhook, grace period, dan expiry yang sudah ada tetap dipakai apa adanya, tidak disentuh.
+
+### Prasyarat (terpenuhi)
+
+1. **`SubscriptionPlan` harus sudah ada sebelum `seed:host` dijalankan.** Dipenuhi oleh `scripts/seedPlan.ts` (baru) — membuat satu `SubscriptionPlan` default (`code: "STANDARD"`, Rp50.000/bulan sesuai §23.1) kalau belum ada. Ini tetap sebatas provisioning convenience di backend operasional, bukan CRUD admin — pengelolaan plan jangka panjang (ubah harga, tambah tier) tetap tugas backend admin (§3.6). `ensureInitialSubscription()` memilih plan `isActive` tertua yang ditemukan — cukup untuk hari ini karena memang hanya ada satu plan; kalau nanti ada banyak plan, perlu mekanisme pemilihan baru (mis. env var `SEED_HOST_PLAN_CODE`), belum dibangun.
+2. **`PROVISIONING-HOST.md` diperbarui bersamaan** — §4 sekarang mengarahkan `seed:plan` sebelum `seed:host`.
+
+### Dua gap lain yang ditemukan saat menelusuri alur ini — ditemukan, sengaja belum diperbaiki
+
+Tidak terkait langsung dengan free trial, tapi ditemukan saat membaca `generateSubscriptionInvoice`/`expireOverdueInvoices` baris demi baris untuk memastikan desain di atas benar-benar akan berjalan seperti dijelaskan:
+
+- **`dueAt` invoice di-hardcode +3 hari dari tanggal pembuatan**, tidak pernah membaca `SubscriptionPlan.graceDays` meskipun field itu ada di schema dan dimaksudkan konfigurabel (`models/SubscriptionPlan.ts`). Setiap plan hari ini punya jatuh tempo 3 hari yang sama, terlepas dari `graceDays`-nya masing-masing.
+- **Jendela pembayaran invoice subscription efektif ~15 menit, bukan 3 hari.** `expireOverdueInvoices()` (dipanggil cron yang sama) memeriksa `invoice.expiresAt` — masa berlaku kode QRIS teknis, di-set 15 menit sejak pembuatan (sama seperti QRIS POS) — bukan `invoice.dueAt`. Tidak ada mekanisme regenerate kode QR untuk invoice subscription yang sudah lewat 15 menit tapi masih dalam `dueAt` (berbeda dari sisi POS, yang punya retry via `createQrisPayment`). Praktiknya, HOST yang tidak membayar dalam 15 menit pertama akan melihat invoice-nya `EXPIRED` jauh sebelum `dueAt` benar-benar lewat, tanpa cara mendapatkan QR baru untuk invoice yang sama.

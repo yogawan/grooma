@@ -13,12 +13,20 @@
  * Every subsequent HOST/AGENT for that business is created normally through
  * POST /users by this account.
  *
+ * Also bootstraps the HOST's initial Subscription (PRD §23.7): ACTIVE,
+ * free for one month from today. Run `npm run seed:plan` FIRST — this
+ * needs an existing SubscriptionPlan to reference and fails with a clear
+ * error otherwise. Safe to re-run against a HOST that already exists but
+ * has no Subscription yet (e.g. seeded before this step existed) — it
+ * backfills one rather than skipping.
+ *
  * Required env: SEED_HOST_USERNAME, SEED_HOST_PASSWORD, SEED_HOST_NAME
  * (plus MONGODB_URI and SESSION_SECRET, as with any entry point).
  * Optional env: SEED_HOST_PHONE — phone is optional on the model itself,
  * so this can be left unset.
  *
  * Usage (reads .env.local automatically):
+ *   npm run seed:plan   # once per deployment, before the first seed:host
  *   npm run seed:host
  *
  * Not `bun scripts/seedHost.ts` — the installed bson version's

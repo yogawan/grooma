@@ -37,6 +37,15 @@ Karena databasenya dibagi, baris `GROOMA_ADMIN` **tetap ada** di koleksi `users`
 ## Daftar Endpoint
 
 > Beberapa baris (profile, dashboard/*, `branches` GET, `subscription/*`, `transaction-change-requests/{id}`) tidak dijaga pakai `requireRole` eksplisit — pembatasannya ada di logic service (scoping by branch/ownId), bukan allowlist role. Kolom Roles di bawah merefleksikan behavior efektifnya, bukan cuma yang ketulis di kode gate.
+>
+> **Kolom Pagination** (ditambahkan 2026-10-19) menyatakan kondisi kode **sekarang**, bukan target:
+> - **`page/limit`** — paginated sesuai kontrak (`page`/`limit`, default `1`/`20`, `limit` dibatasi `1…100`, `data.pagination` berisi `page/limit/total/totalPages`)
+> - **⚠️** — paginated tapi bentuknya menyimpang
+> - **❌** — mengembalikan seluruh koleksi dalam satu response; **wajib paginated menurut PRD §16, belum diimplementasikan**
+> - **cap N** — hasil dipotong di server pada N baris, tanpa parameter dan (hari ini) tanpa indikasi apa pun ke client bahwa daftarnya terpotong
+> - **—** — resource tunggal, tidak berlaku
+>
+> Kontrak lengkap, daftar inkonsistensi, dan rencana rollout-nya ada di **`docs/PAGINATION-CONTRACT.md`**.
 
 ### Auth
 | Method | Endpoint | Roles |
@@ -53,66 +62,66 @@ Karena databasenya dibagi, baris `GROOMA_ADMIN` **tetap ada** di koleksi `users`
 | PATCH | `/api/v1/profile` | HOST, AGENT (milik sendiri) |
 
 ### Users (pegawai)
-| Method | Endpoint | Roles |
-|---|---|---|
-| GET | `/api/v1/users` | HOST |
-| POST | `/api/v1/users` | HOST |
-| GET | `/api/v1/users/{id}` | HOST |
-| PATCH | `/api/v1/users/{id}` | HOST |
-| PATCH | `/api/v1/users/{id}/status` | HOST |
+| Method | Endpoint | Roles | Pagination |
+|---|---|---|---|
+| GET | `/api/v1/users` | HOST | ❌ |
+| POST | `/api/v1/users` | HOST | — |
+| GET | `/api/v1/users/{id}` | HOST | — |
+| PATCH | `/api/v1/users/{id}` | HOST | — |
+| PATCH | `/api/v1/users/{id}/status` | HOST | — |
 
 ### Branches
-| Method | Endpoint | Roles |
-|---|---|---|
-| GET | `/api/v1/branches` | HOST, AGENT |
-| POST | `/api/v1/branches` | HOST |
-| GET | `/api/v1/branches/{id}` | HOST, AGENT |
-| PATCH | `/api/v1/branches/{id}` | HOST |
-| PATCH | `/api/v1/branches/{id}/status` | HOST |
+| Method | Endpoint | Roles | Pagination |
+|---|---|---|---|
+| GET | `/api/v1/branches` | HOST, AGENT | ❌ |
+| POST | `/api/v1/branches` | HOST | — |
+| GET | `/api/v1/branches/{id}` | HOST, AGENT | — |
+| PATCH | `/api/v1/branches/{id}` | HOST | — |
+| PATCH | `/api/v1/branches/{id}/status` | HOST | — |
 
 ### Customers
-| Method | Endpoint | Roles |
-|---|---|---|
-| GET | `/api/v1/customers` | HOST, AGENT |
-| POST | `/api/v1/customers` | HOST, AGENT |
-| GET | `/api/v1/customers/{id}` | HOST, AGENT |
-| PATCH | `/api/v1/customers/{id}` | HOST, AGENT |
-| PATCH | `/api/v1/customers/{id}/status` | HOST |
+| Method | Endpoint | Roles | Pagination |
+|---|---|---|---|
+| GET | `/api/v1/customers` | HOST, AGENT | ❌ — hanya `search`, dan itu dibaca tanpa Zod |
+| POST | `/api/v1/customers` | HOST, AGENT | — |
+| GET | `/api/v1/customers/{id}` | HOST, AGENT | — |
+| PATCH | `/api/v1/customers/{id}` | HOST, AGENT | — |
+| PATCH | `/api/v1/customers/{id}/status` | HOST | — |
 
 ### Services
-| Method | Endpoint | Roles |
-|---|---|---|
-| GET | `/api/v1/services` | HOST, AGENT |
-| POST | `/api/v1/services` | HOST |
-| GET | `/api/v1/services/{id}` | HOST, AGENT |
-| PATCH | `/api/v1/services/{id}` | HOST |
-| PATCH | `/api/v1/services/{id}/status` | HOST |
+| Method | Endpoint | Roles | Pagination |
+|---|---|---|---|
+| GET | `/api/v1/services` | HOST, AGENT | ❌ |
+| POST | `/api/v1/services` | HOST | — |
+| GET | `/api/v1/services/{id}` | HOST, AGENT | — |
+| PATCH | `/api/v1/services/{id}` | HOST | — |
+| PATCH | `/api/v1/services/{id}/status` | HOST | — |
 
 ### Transactions & Change Requests
-| Method | Endpoint | Roles |
-|---|---|---|
-| GET | `/api/v1/transactions` | HOST, AGENT |
-| POST | `/api/v1/transactions` | AGENT |
-| GET | `/api/v1/transactions/{id}` | HOST, AGENT |
-| POST | `/api/v1/transactions/{id}/complete` | AGENT |
-| POST | `/api/v1/transactions/{id}/cancel` | HOST, AGENT |
-| GET | `/api/v1/transactions/{id}/receipt` | HOST, AGENT |
-| POST | `/api/v1/transactions/{id}/change-requests` | HOST, AGENT |
-| GET | `/api/v1/transaction-change-requests` | HOST |
-| GET | `/api/v1/transaction-change-requests/{id}` | HOST, AGENT (pengaju sendiri) |
-| POST | `/api/v1/transaction-change-requests/{id}/approve` | HOST |
-| POST | `/api/v1/transaction-change-requests/{id}/reject` | HOST |
+| Method | Endpoint | Roles | Pagination |
+|---|---|---|---|
+| GET | `/api/v1/transactions` | HOST, AGENT | `page/limit` |
+| POST | `/api/v1/transactions` | AGENT | — |
+| GET | `/api/v1/transactions/{id}` | HOST, AGENT | — |
+| POST | `/api/v1/transactions/{id}/complete` | AGENT | — |
+| POST | `/api/v1/transactions/{id}/cancel` | HOST, AGENT | — |
+| GET | `/api/v1/transactions/{id}/receipt` | HOST, AGENT | — |
+| POST | `/api/v1/transactions/{id}/change-requests` | HOST, AGENT | — |
+| GET | `/api/v1/transaction-change-requests` | HOST | `page/limit` |
+| GET | `/api/v1/transaction-change-requests/{id}` | HOST, AGENT (pengaju sendiri) | — |
+| POST | `/api/v1/transaction-change-requests/{id}/approve` | HOST | — |
+| POST | `/api/v1/transaction-change-requests/{id}/reject` | HOST | — |
 
 ### Inventory
-| Method | Endpoint | Roles |
-|---|---|---|
-| GET | `/api/v1/inventory` | HOST, AGENT |
-| POST | `/api/v1/inventory` | HOST, AGENT |
-| GET | `/api/v1/inventory/{id}` | HOST, AGENT |
-| PATCH | `/api/v1/inventory/{id}` | HOST, AGENT |
-| DELETE | `/api/v1/inventory/{id}` | HOST, AGENT |
-| GET | `/api/v1/inventory/{id}/stock-movements` | HOST, AGENT |
-| POST | `/api/v1/inventory/{id}/stock-movements` | HOST, AGENT |
+| Method | Endpoint | Roles | Pagination |
+|---|---|---|---|
+| GET | `/api/v1/inventory` | HOST, AGENT | `page/limit` |
+| POST | `/api/v1/inventory` | HOST, AGENT | — |
+| GET | `/api/v1/inventory/{id}` | HOST, AGENT | — |
+| PATCH | `/api/v1/inventory/{id}` | HOST, AGENT | — |
+| DELETE | `/api/v1/inventory/{id}` | HOST, AGENT | — |
+| GET | `/api/v1/inventory/{id}/stock-movements` | HOST, AGENT | `page/limit` |
+| POST | `/api/v1/inventory/{id}/stock-movements` | HOST, AGENT | — |
 
 ### Payments
 | Method | Endpoint | Roles |
@@ -124,21 +133,23 @@ Karena databasenya dibagi, baris `GROOMA_ADMIN` **tetap ada** di koleksi `users`
 > Pada deployment bermode `SELF_RECORDED`, `/payments/qris` menolak permintaan (PRD §9.6) — transaksi QRIS di situ sudah `PAID` sejak dibuat dan tidak punya order Midtrans. Webhook Midtrans juga tidak pernah menerima notifikasi.
 
 ### Dashboard
-| Method | Endpoint | Roles |
-|---|---|---|
-| GET | `/api/v1/dashboard/summary` | HOST, AGENT |
-| GET | `/api/v1/dashboard/revenue` | HOST, AGENT |
-| GET | `/api/v1/dashboard/transactions` | HOST, AGENT |
-| GET | `/api/v1/dashboard/services` | HOST, AGENT |
-| GET | `/api/v1/dashboard/agents` | HOST, AGENT |
-| GET | `/api/v1/dashboard/inventory` | HOST, AGENT |
+| Method | Endpoint | Roles | Pagination |
+|---|---|---|---|
+| GET | `/api/v1/dashboard/summary` | HOST, AGENT | — (objek tunggal) |
+| GET | `/api/v1/dashboard/revenue` | HOST, AGENT | ❌ — `byPeriod` tanpa batas, jumlah bucket ditentukan `from`/`to` client |
+| GET | `/api/v1/dashboard/transactions` | HOST, AGENT | — (terbatas kardinalitas enum) |
+| GET | `/api/v1/dashboard/services` | HOST, AGENT | cap 10 |
+| GET | `/api/v1/dashboard/agents` | HOST, AGENT | ❌ — tanpa batas sama sekali |
+| GET | `/api/v1/dashboard/inventory` | HOST, AGENT | cap 20 |
+
+> Endpoint dashboard sengaja **tidak** dipaginasi (memaginasi "top 10" tidak bermakna), tapi tetap wajib punya batas baris di server **dan** memberi tahu client kalau hasilnya dipotong — PRD §7.2, `docs/PAGINATION-CONTRACT.md` §6. Keempat baris yang bukan "—" di atas belum memenuhi salah satu atau kedua kewajiban itu.
 
 ### Subscription (milik HOST)
-| Method | Endpoint | Roles |
-|---|---|---|
-| GET | `/api/v1/subscription` | HOST (milik sendiri) |
-| GET | `/api/v1/subscription/invoices` | HOST (milik sendiri) |
-| GET | `/api/v1/subscription/invoices/{id}` | HOST (milik sendiri) |
+| Method | Endpoint | Roles | Pagination |
+|---|---|---|---|
+| GET | `/api/v1/subscription` | HOST (milik sendiri) | — |
+| GET | `/api/v1/subscription/invoices` | HOST (milik sendiri) | ⚠️ `page/limit`, tapi field keempat bernama `pages` bukan `totalPages`; param `status` diterima lalu dibuang |
+| GET | `/api/v1/subscription/invoices/{id}` | HOST (milik sendiri) | — |
 
 ### Admin Platform
 Tidak ada di backend ini. Namespace `/api/v1/admin/*` sudah dihapus dan pindah ke backend admin terpisah (PRD §3.6).

@@ -2,6 +2,11 @@
 
 Systematic review of indexing strategy, N+1 query risks, and pagination compliance.
 
+> **Erratum 2026-10-19.** The "Pagination Compliance" section and the pagination line in
+> the Verdict asserted a level of compliance that the code never had. Both have been
+> corrected in place and the incorrect claims are quoted so the drift stays traceable.
+> The normative pagination contract is now **`docs/PAGINATION-CONTRACT.md`**.
+
 ---
 
 ## Database Indexes Review
@@ -139,20 +144,62 @@ Systematic review of indexing strategy, N+1 query risks, and pagination complian
 
 ## Pagination Compliance
 
-### All list endpoints must enforce limit bounds: ✓
-- `GET /users`: paginated (1-100, default 20)
-- `GET /customers`: paginated (1-100, default 20)
-- `GET /services`: paginated (1-100, default 20)
-- `GET /transactions`: paginated (1-100, default 20)
-- `GET /inventory`: paginated (1-100, default 20)
-- `GET /dashboard/inventory`: hard limit 20 (no pagination param, always returns top 20 by quantity asc)
-- `GET /transaction-change-requests`: paginated (1-100, default 20)
+> **CORRECTED 2026-10-19.** The original version of this section claimed `GET /users`,
+> `GET /customers`, and `GET /services` were "paginated (1-100, default 20)" and that all
+> list endpoints were compliant. None of those three has ever accepted `page`/`limit` —
+> the claim was never true. The list also omitted `/branches`,
+> `/inventory/{id}/stock-movements`, `/subscription/invoices`, and five of the six
+> `/dashboard/*` endpoints. The table below was re-derived by reading
+> `app/api/v1/**`, `services/*.ts`, and `validations/*.ts` directly.
+>
+> The canonical pagination contract now lives in **`docs/PAGINATION-CONTRACT.md`** —
+> that document, not this section, is the source of truth for the required shape.
 
-**Validation:** All pagination enforced via Zod schemas with `default: 20`, `min: 1`, `max: 100`.
+### Actual state (verified against code, 2026-10-19)
 
-**Potential issue:** Dashboard service returns raw aggregation results without offset/limit. For high-volume data (1000+ transactions/period), the aggregation pipeline should include `$skip` and `$limit` stages.
+**Paginated — `page`/`limit` via Zod, bounds 1–100, default 20:**
+- `GET /transactions` → `{ transactions, pagination: { page, limit, total, totalPages } }`
+- `GET /transaction-change-requests` → `{ transactions, pagination: { …totalPages } }`
+- `GET /inventory` → `{ items, pagination: { …totalPages } }`
+- `GET /inventory/{id}/stock-movements` → `{ movements, pagination: { …totalPages } }`
+- `GET /subscription/invoices` → `{ invoices, pagination: { page, limit, total, pages } }`
+  — same bounds, but the fourth field is named `pages`, not `totalPages`
+  (see PAGINATION-CONTRACT §9.1). Its `status` filter is validated then discarded (§9.3),
+  and the "no subscription yet" early-return hardcodes `page: 1, limit: 20` regardless of
+  what the client asked for (§9.2).
 
-**Decision:** Add optional pagination to dashboard queries (post-MVP, acceptable for now with data size assumptions).
+**Not paginated — whole collection returned in one response:**
+- `GET /customers` — only a raw `search` param, read straight off `searchParams` with no
+  Zod schema at all. Without `search`, returns every customer row.
+- `GET /users` — no query params. Same file estimates "hundreds per branch" above.
+- `GET /services` — no query params.
+- `GET /branches` — no query params (AGENT always gets ≤ 1 row; HOST gets all).
+
+**Aggregate endpoints — capped server-side, no pagination param:**
+- `GET /dashboard/services` — hard `$limit: 10`, cap not exposed in the response
+- `GET /dashboard/inventory` — hard `.limit(20)`, cap not exposed in the response
+- `GET /dashboard/transactions` — bounded by enum cardinality (safe structurally)
+- `GET /dashboard/summary` — single object (not a list)
+
+**Aggregate endpoints with no upper bound at all:**
+- `GET /dashboard/agents` — no `$limit`; row count grows with the number of agents who
+  transacted in the window
+- `GET /dashboard/revenue` → `byPeriod` — bucket count is driven by the client's
+  `from`/`to`; `?period=DAY&from=2015-01-01&to=2026-12-31` yields thousands of buckets
+  from one request that passes validation
+
+**Sort stability:** none of the five paginated queries appends a unique tie-breaker to its
+`sort`. Offset pagination over a non-unique sort key can skip or duplicate rows across
+pages — see PAGINATION-CONTRACT §4.
+
+**Score:** 4 of 11. The denominator is `GET` endpoints whose row count has **no structural
+upper bound** — the four paginated-and-compliant, `/subscription/invoices`, the four
+unpaginated collections, and the two unbounded aggregations. The hard-capped and
+enum-bounded dashboard endpoints are excluded: their volume is safe, their problem is that
+a truncated result is indistinguishable from a complete one.
+
+**Decision:** adopt `docs/PAGINATION-CONTRACT.md` as the normative shape and work the
+staged rollout checklist in its §10. No code was changed as part of this correction.
 
 ---
 
@@ -166,19 +213,27 @@ Systematic review of indexing strategy, N+1 query risks, and pagination complian
 
 2. **getRevenue**: two separate aggregations (byPeriod + paymentBreakdown)
    - ✓ Both use early $match filter
+   - ⚠ `byPeriod` has no bound on bucket count — the client controls `from`/`to` and
+     `period`, so the output row count is client-controlled (corrected 2026-10-19)
    - **Optimization:** Could combine into single $facet for one pass
 
 3. **getServicePerformance**: $group by service within date range
    - ✓ Sorted by revenue descending, limited to top 10
    - ✓ serviceSnapshot is embedded (no separate fetch)
+   - ⚠ The cap is not visible in the response — a truncated top-10 is indistinguishable
+     from a complete list
 
 4. **getAgentPerformance**: $group by agent within date range
    - ✓ Agent name NOT hydrated (stored as agent ID only) per design
    - Clients fetch agent metadata separately
+   - ⚠ **No `$limit` stage at all** — unlike getServicePerformance, which caps at 10.
+     Nothing bounds the row count (corrected 2026-10-19)
 
 5. **getInventorySummary**: find() with $expr filter
    - ✓ Limits to 20 results
    - ✓ Branch scoped
+   - ⚠ Cap not exposed in the response; a HOST with 60 low-stock items sees 20 with no
+     indication the list was cut
 
 ---
 
@@ -227,7 +282,10 @@ db.users.createIndex({ role: 1 })
 Current implementation:
 - ✓ No obvious N+1 query patterns
 - ✓ Populate chains consolidated
-- ✓ Pagination enforced on all list endpoints
+- ✗ ~~Pagination enforced on all list endpoints~~ — **withdrawn 2026-10-19.** 4 of 11
+  multi-row `GET` endpoints are paginated; `/customers`, `/users`, `/services`, and
+  `/branches` return their whole collection, and two dashboard aggregations have no
+  upper bound. See the corrected Pagination Compliance section above.
 - ✓ TTL indexes for session/rate-limit auto-cleanup
 
 Post-MVP improvements:
@@ -235,4 +293,7 @@ Post-MVP improvements:
 - Add phone index for customer deduplication
 - Optionally add pagination to dashboard aggregations for very high volumes (1000+ results)
 
-**Sign-off:** Phase 7 performance audit COMPLETE.
+**Sign-off:** Phase 7 performance audit COMPLETE — *with the pagination claim since
+withdrawn.* The rest of this document (index review, N+1 assessment, connection caching)
+was not re-audited on 2026-10-19 and remains as originally written; treat it with the
+same scepticism until independently verified.

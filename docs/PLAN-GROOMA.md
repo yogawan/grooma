@@ -139,7 +139,7 @@ Simpan di `.env.local` (sudah di-gitignore lewat pola `.env*`), buat juga `.env.
 - Pembagian field Customer HOST vs AGENT di atas adalah interpretasi — PRD sengaja tidak merinci field mana yang "terlalu pribadi"
 - `branchCode`/`serviceCode` diperlakukan immutable setelah create (tidak ada di update schema) — bukan larangan eksplisit PRD, tapi konsisten dengan `username` yang juga immutable
 - Endpoint create/update User TIDAK menyediakan reset password oleh HOST — tidak ada di PRD, password hanya berubah lewat `/auth/change-password` self-service
-- `GET /branches` dan `GET /services` tidak pakai pagination (berbeda dari Transaction/Inventory di §16) — NFR eksplisit cuma minta pagination untuk daftar transaksi dan inventaris
+- ~~`GET /branches` dan `GET /services` tidak pakai pagination (berbeda dari Transaction/Inventory di §16) — NFR eksplisit cuma minta pagination untuk daftar transaksi dan inventaris~~ — **keputusan ini dicabut 2026-10-19.** Pembacaan NFR-nya memang benar untuk teks PRD saat itu, tapi konsekuensinya lebih luas dari dua endpoint yang disebut di sini: `GET /customers` dan `GET /users` juga dibangun tanpa pagination atas alasan yang sama, dan `/customers` adalah koleksi dengan pertumbuhan tercepat di sistem. PRD §16 sudah diperluas menjadi "setiap `GET` yang mengembalikan daftar", dan kontraknya ada di `docs/PAGINATION-CONTRACT.md`. Pekerjaan kodenya belum dikerjakan — lihat Phase 9.
 
 **Business rules untuk dicatat sebagai test-case nanti:**
 - [x] Branch yang sudah punya transaksi tidak bisa dihapus permanen (soft delete only) — otomatis terpenuhi: tidak ada endpoint `DELETE` untuk Branch sama sekali, hanya `PATCH .../status`
@@ -293,8 +293,9 @@ Simpan di `.env.local` (sudah di-gitignore lewat pola `.env*`), buat juga `.env.
   - scripts/reconcilePayments.ts: Compare local vs Midtrans authoritative status
   - Dry-run mode (default) reports discrepancies; --fix flag applies corrections
 - [x] Performance pass — review index, cek query N+1, pastikan semua list endpoint pakai pagination
-  - docs/PERFORMANCE-AUDIT.md: No N+1 patterns found, all pagination enforced (1-100, default 20)
+  - docs/PERFORMANCE-AUDIT.md: No N+1 patterns found, ~~all pagination enforced (1-100, default 20)~~
   - TTL indexes verified; post-MVP recommendations documented
+  - ⚠️ **Klaim pagination di baris ini salah, dicabut 2026-10-19.** Audit Phase 7 menuliskan `GET /users`/`/customers`/`/services` sebagai "paginated (1-100, default 20)" padahal ketiganya tidak pernah menerima `page`/`limit`, dan verdict-nya menyatakan seluruh list endpoint patuh. Kondisi sebenarnya: 4 dari 11 endpoint `GET` multi-baris yang patuh. Catat bahwa checklist Phase 2 di atas (baris `GET /branches` dan `GET /services`) sudah menyebut kondisi yang benar sejak awal — kedua dokumen saling bertabrakan selama lima hari tanpa terdeteksi. Koreksi penuh di `docs/PERFORMANCE-AUDIT.md`; kontrak baru di `docs/PAGINATION-CONTRACT.md`; pekerjaan kodenya di Phase 9.
 - [x] Deployment checklist — env var di hosting target, pastikan logging aman, siapkan dokumentasi API (DoD §21 #15)
   - docs/TESTING.md: Complete testing guide with framework setup
   - docs/PHASE-7-SUMMARY.md: Comprehensive sign-off with DoD checklist
@@ -354,6 +355,37 @@ Independen dari Phase 2/4/5/6 — hanya butuh Phase 1 (auth) dan, untuk reuse `l
 
 ---
 
+### Phase 9 — Keseragaman Pagination ⏳
+
+> **Status: dokumentasi selesai, kode belum disentuh.** Kontrak ditetapkan di `docs/PAGINATION-CONTRACT.md` (2026-10-19) atas dasar PRD §16 yang sudah diperluas. Audit yang mendasarinya memeriksa `app/api/v1/**`, `services/*.ts`, dan `validations/*.ts` secara langsung — bukan membaca dokumen audit sebelumnya, yang justru ternyata salah (lihat catatan terkoreksi di Phase 7).
+
+**Temuan dasar:** 4 dari 11 endpoint `GET` multi-baris memenuhi kontrak. Rinciannya di `docs/PAGINATION-CONTRACT.md` §7–§8.
+
+**Tahap 1 — perbaikan internal, tanpa dampak ke client:**
+- [ ] Tie-breaker `_id` pada `sort` kelima query paginated yang ada — pagination offset di atas kunci sort non-unik bisa melewatkan atau menduplikasi baris antar halaman (§4). Tidak satu pun dari kelimanya punya tie-breaker hari ini; `GET /inventory` paling rawan karena sort-nya `{ name: 1 }` dan nama item duplikat antar cabang itu normal
+- [ ] Teruskan `status` ke `listInvoicesBySubscription()` — parameter ini divalidasi di `subscriptionSchema.ts` lalu dibuang; `?status=PAID` membalas `200` berisi invoice semua status (§9.3)
+- [ ] Pindahkan validasi query ke sebelum early-return di `subscription/invoices`, dan pantulkan `page`/`limit` sebenarnya alih-alih hardcode `{ page: 1, limit: 20, ... }` (§9.2)
+- [ ] Satukan bentuk pagination ke satu helper di `lib/` supaya `pages` vs `totalPages` tidak bisa terulang
+
+**Tahap 2 — aditif, aman untuk klien lama:**
+- [ ] Kirim `totalPages` bersama `pages` dari `billingService.ts` (§9.1 — `totalPages` yang menang, 4 endpoint lawan 1)
+- [ ] Beri batas pada `/dashboard/agents` (tidak punya `$limit` sama sekali) dan pada jumlah bucket `byPeriod` di `/dashboard/revenue` (jumlah barisnya ditentukan `from`/`to` milik client)
+- [ ] Ekspos `limit` efektif pada `/dashboard/services` (cap 10) dan `/dashboard/inventory` (cap 20) — keduanya memotong hasil tanpa memberi tahu client
+
+**Tahap 3 — mengubah jumlah baris yang diterima client, wajib dikoordinasikan:**
+- [ ] `page`/`limit` + schema query baru untuk `/customers`, lalu `/users`, `/services`, `/branches`. Belum ada `*QuerySchema` sama sekali untuk keempatnya; `/customers` bahkan membaca `search` langsung dari `searchParams` tanpa Zod
+- [ ] Perbarui `app/scalar/docs/paths/*.ts` untuk setiap endpoint yang berubah — spec itu hand-maintained, tidak ada yang menyinkronkannya otomatis
+- [ ] Hapus `pages` dan `PaginationAlt` setelah klien mobile bermigrasi
+
+**Koordinasi klien mobile — tahap terpisah atas instruksi user:**
+- [ ] `docs/integration-to-mobile-flutter/` **sengaja belum disentuh.** Penambahan `data.pagination` bersifat aditif dan tidak memecahkan klien lama, tapi kemunculan `limit` default **memecahkan**: client yang hari ini menerima seluruh daftar customer besok hanya menerima 20 baris. Tahap 3 tidak boleh dirilis sebelum dokumen ini dan build mobile-nya diselaraskan
+
+**Verifikasi:** `tsc --noEmit`, `vitest run` (baseline all-green — kegagalan apa pun adalah regresi), `next build`, `biome check` discope ke file tersentuh.
+
+**Exit criteria:** seluruh endpoint di `docs/PAGINATION-CONTRACT.md` §7 masuk kolom "sesuai kontrak", dan §8 membaca 11 dari 11.
+
+---
+
 ## 5. Definition of Done — Master Checklist
 
 Salinan tracker dari PRD §21, centang di akhir setiap fase yang relevan:
@@ -392,7 +424,10 @@ Phase 0 (Alignment)
 
 Phase 3 + Phase 4 + Phase 5  ──>  Phase 6 (Dashboard, butuh data semua modul)
 Phase 6 + Phase 8            ──>  Phase 7 (Hardening)
+Phase 7                      ──>  Phase 9 (Keseragaman Pagination) ⏳
 ```
+
+Phase 9 bersifat lintas-modul: ia menyentuh endpoint milik Phase 2, 3, 4, 5, 6, dan 8 sekaligus, jadi ia menunggu semuanya ada. Tahap 1 dan 2 di dalamnya aman dikerjakan kapan saja; Tahap 3 punya dependensi eksternal ke build klien Flutter, bukan ke fase lain.
 
 Phase 3 dan Phase 4 bisa dikerjakan paralel (sama-sama hanya bergantung pada Phase 1+2). Phase 6 menunggu data nyata dari Phase 3–5 agar aggregation tidak dites dengan data kosong/palsu.
 

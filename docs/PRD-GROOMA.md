@@ -740,6 +740,8 @@ Seluruh endpoint mengembalikan JSON.
 
 Endpoint yang membutuhkan autentikasi harus memvalidasi session sebelum memproses operasi.
 
+Setiap endpoint `GET` yang mengembalikan daftar mengikuti **satu** kontrak pagination: parameter `page`/`limit` (default `1`/`20`, `limit` dibatasi `1…100`) dan objek `data.pagination` berisi `page`, `limit`, `total`, `totalPages`. Tabel endpoint di §7.2–§7.11 di bawah tidak mengulang detail ini per baris — lihat **`docs/PAGINATION-CONTRACT.md`** untuk kontrak lengkapnya beserta daftar endpoint mana yang sudah patuh dan mana yang belum.
+
 ## 7.1. Authentication
 
 | Method | Endpoint | Access | Description |
@@ -766,11 +768,16 @@ Parameter:
 - `from`
 - `to`
 - `branchId`: HOST only, optional
-- `groupBy`: `day | week | month`
+- `groupBy`: `day | week | month` — *catatan 2026-10-19: implementasinya menamai parameter ini `period` dengan nilai `DAY | WEEK | MONTH | YEAR` (`validations/dashboardSchema.ts`). Nama di PRD ini tidak pernah ada di kode; `period` yang berlaku. Dicatat, belum diselaraskan.*
 
 AGENT selalu menggunakan cabang yang ditugaskan, meskipun frontend mengirim `branchId` yang berbeda.
 
 Dashboard harus menggunakan data aktual dari database, bukan angka statis.
+
+**Batas jumlah baris.** Endpoint dashboard mengembalikan hasil agregasi, bukan daftar resource, jadi ia **tidak** dipaginasi — memaginasi "top 10" tidak bermakna. Sebagai gantinya berlaku dua kewajiban (lihat `docs/PAGINATION-CONTRACT.md` §6):
+
+1. Setiap endpoint dashboard wajib punya **batas atas jumlah baris di server**. Ini termasuk jumlah bucket waktu pada `/dashboard/revenue`, karena `from`/`to` dikirim client — tanpa batas, satu request bisa meminta ribuan bucket.
+2. Response wajib memberi tahu client bahwa hasilnya **dipotong** (minimal `limit` efektif yang dipakai). Daftar terpotong yang tidak bisa dibedakan dari daftar lengkap bukan sekadar tidak lengkap — ia menyesatkan.
 
 ## 7.3. User Management
 
@@ -838,7 +845,7 @@ AGENT hanya dapat memilih service yang aktif saat membuat transaksi.
 | GET | `/transactions/:id/receipt` | HOST, assigned branch AGENT | Receipt data |
 
 List transactions harus mendukung:
-- Pagination.
+- Pagination — sesuai `docs/PAGINATION-CONTRACT.md`.
 - Search berdasarkan kode transaksi.
 - Filter status pembayaran.
 - Filter status transaksi.
@@ -846,7 +853,7 @@ List transactions harus mendukung:
 - Filter cabang untuk HOST.
 - Filter agent untuk HOST.
 
-Gunakan pagination berbasis cursor jika volume transaksi sudah besar.
+Soal cursor pagination: keputusan untuk v1 adalah **tetap offset-based (`page`/`limit`) di seluruh endpoint**, supaya hanya ada satu bentuk yang harus dipahami client. Bila cursor dibutuhkan ketika volume sudah besar, ia ditambahkan sebagai mode **opt-in** (parameter `cursor` + `pagination.nextCursor` baru) tanpa mencabut `page`/`limit` — mengganti bentuknya adalah breaking change dan memerlukan `/api/v2`. Lihat `docs/PAGINATION-CONTRACT.md` §2.
 
 ## 7.8. Payment Management
 
@@ -1271,6 +1278,11 @@ HTTP status yang digunakan:
 
 Jangan mengembalikan stack trace, database error mentah, atau informasi sensitif kepada client.
 
+Dua catatan status yang khusus berlaku pada endpoint daftar (`docs/PAGINATION-CONTRACT.md` §5):
+
+- `page`/`limit` di luar batas yang diizinkan → **`400`**, bukan dipotong diam-diam ke nilai terdekat.
+- `page` yang melebihi `totalPages` → **`200`** dengan array kosong dan objek `pagination` yang terisi benar, **bukan `404`**. Halaman kosong bukan resource yang hilang, dan client membutuhkan `total`/`totalPages` untuk memperbaiki posisinya.
+
 ---
 
 # 15. Security Requirements
@@ -1296,8 +1308,11 @@ Jangan mengembalikan stack trace, database error mentah, atau informasi sensitif
 # 16. Non-Functional Requirements
 
 ## Performance
-- Gunakan pagination untuk daftar transaksi dan inventaris.
-- Gunakan index pada field pencarian dan filter utama.
+- **Setiap endpoint `GET` yang mengembalikan daftar wajib mendukung pagination dengan format yang konsisten.** Kontraknya — nama parameter, batas nilai, bentuk objek `pagination`, dan perilaku edge case — ditetapkan di `docs/PAGINATION-CONTRACT.md`; dokumen itu yang menjadi acuan implementasi, bukan paragraf ini.
+  - Patokan "wajib": sebuah daftar perlu paginated bila jumlah barisnya tumbuh dari aktivitas operasional dan **tidak punya batas atas struktural**. Perkiraan volume ("jumlahnya kan sedikit") bukan alasan yang cukup untuk melewatkannya.
+  - Endpoint agregasi (`/dashboard/*`) tidak dipaginasi, tapi **wajib punya batas jumlah baris di server dan wajib memberitahu client bahwa hasilnya dipotong.** Daftar terpotong yang tidak bisa dibedakan dari daftar lengkap adalah data yang menyesatkan.
+  - *Revisi 2026-10-19:* versi sebelumnya hanya mewajibkan pagination untuk **daftar transaksi dan inventaris**. Pembatasan itu terbawa ke implementasi — `GET /customers`, `/users`, `/services`, dan `/branches` dibangun tanpa pagination dan secara formal memang patuh pada NFR lama. `/customers` adalah koleksi dengan pertumbuhan tercepat di sistem, jadi pembatasan itu dilepas.
+- Gunakan index pada field pencarian dan filter utama. Untuk query paginated, bentuk index sebaiknya mengikuti bentuk `sort`-nya.
 - Hindari query N+1 pada relasi.
 - Optimalkan aggregation pipeline untuk dashboard.
 - Gunakan cache hanya jika konsistensi data tetap terjaga.

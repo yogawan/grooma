@@ -234,7 +234,10 @@ Services layer cannot be unit-tested without a database. Integration tests will 
 API route handlers (app/api/v1/*) require Next.js RequestContext and response mocking. Not in scope for Phase 7. Post-MVP, add:
 - Mock NextRequest/NextResponse
 - Test full request → response cycle
-- Verify status codes, error messages, pagination headers
+- Verify status codes, error messages, and the `data.pagination` envelope
+  — *corrected 2026-10-19: this line previously said "pagination headers". Grooma has
+  never used HTTP pagination headers; all pagination metadata lives in the response body.
+  See `docs/PAGINATION-CONTRACT.md` §3.*
 
 ### No E2E Tests
 End-to-end tests would require:
@@ -261,6 +264,42 @@ Post-MVP approach: Separate `tests/e2e/` directory with Docker Compose setup.
 | Services layer | Integration | ⏳ Post-MVP | — |
 | API routes | Integration | ⏳ Post-MVP | — |
 | E2E workflows | E2E | ⏳ Phase 8 | — |
+| Pagination contract | Unit + Integration | ⏳ Phase 9 | — |
+
+---
+
+## Pagination Contract Tests (planned — Phase 9)
+
+`docs/PAGINATION-CONTRACT.md` is normative, so it needs tests that fail when an endpoint
+drifts from it. These do not exist yet. Added here on 2026-10-19 so the contract ships
+with a verification plan rather than only prose.
+
+**Schema layer (unit, no database needed — run these first, they are cheap):**
+- `page`/`limit` default to `1`/`20` when absent
+- `limit=101`, `limit=0`, `limit=abc`, `page=0`, `page=-1` all fail to parse
+- `limit=100` and `page=1` pass (boundary values, inclusive)
+- Every list-query schema in `validations/` exposes **identically shaped** `page`/`limit`
+  fields — a table-driven test over all of them catches a new endpoint that invents its
+  own bounds. This is the test that would have caught the `pages` vs `totalPages` split
+  had it existed at the schema layer.
+
+**Service layer (integration, needs a seeded database):**
+- `total` counts the whole filtered set, not the returned page
+- `totalPages === Math.ceil(total / limit)`, and is `0` when `total === 0`
+- `page` beyond the last page → empty array + correct `total`/`totalPages`, **not** a throw
+- **Sort stability:** seed ≥ 3 rows sharing the same sort key value, page through the
+  whole set with `limit=1`, assert the union of ids has no duplicates and no omissions.
+  This is the one that fails today for all five paginated endpoints (contract §4), and
+  it is the reason the tie-breaker work is Tahap 1 rather than a cosmetic cleanup.
+- Filters actually narrow the result: a filter that matches nothing yields `total: 0`.
+  Covers the class of bug where a param is validated then dropped (contract §9.3).
+
+**Route layer (integration):**
+- Response body matches the envelope exactly: one named resource array + `pagination`
+  with all four fields present, including on empty results
+- No pagination HTTP headers are emitted (the shape is body-only, by contract)
+- `page`/`limit` sent to an endpoint that does not support them → `400`, never a silently
+  ignored param
 
 ---
 

@@ -206,6 +206,11 @@ Systematic review against PRD §15 (Security considerations). Status: IN PROGRES
 **Implementation:**
 - ✓ All routes use `/api/v1/` namespace (future v2 can coexist)
 - ✓ Response shape includes top-level key per resource: `{ user: {...} }`, `{ transaction: {...} }`, `{ items, pagination: {...} }`
+  - ⚠ *Note added 2026-10-19:* the `pagination` object is **not** uniform across endpoints
+    — `GET /subscription/invoices` names its fourth field `pages` while the other four
+    paginated endpoints name it `totalPages`. Within a versioned API that promises shape
+    stability, that is a divergence worth closing before v2. Normative shape and migration
+    path: `docs/PAGINATION-CONTRACT.md` §3 and §9.1.
 - ✓ Schema evolution: Can add optional fields without breaking clients
 - ✓ Deprecation strategy: Can mark v1 routes as deprecated before removing
 

@@ -4,6 +4,16 @@
 **Completion Date:** 2026-10-14  
 **All DoD Items:** ✓ Met
 
+> **Erratum 2026-10-19 — pagination claim withdrawn.** This document is otherwise left as
+> the point-in-time sign-off it was written as. One claim in it was not true when written:
+> the Performance Audit bullet below states *"Pagination enforced (1-100 limit, default 20,
+> all endpoints compliant)"*. It was inherited verbatim from `docs/PERFORMANCE-AUDIT.md`,
+> which listed `GET /users`, `/customers`, and `/services` as paginated. None of the three
+> has ever accepted `page`/`limit`. Actual state: 4 of 11 multi-row `GET` endpoints comply.
+> Corrected in `docs/PERFORMANCE-AUDIT.md`; the normative contract is
+> `docs/PAGINATION-CONTRACT.md`; the code work is tracked as Phase 9 in
+> `docs/PLAN-GROOMA.md`. Nothing else here was re-audited.
+
 ---
 
 ## Executive Summary
@@ -41,7 +51,7 @@ Phase 7 hardened Grooma's production readiness through systematic security audit
 **Database indexing review:**
 - ✓ No N+1 query patterns found
 - ✓ Populate chains consolidated (single .populate chain per query)
-- ✓ Pagination enforced (1-100 limit, default 20, all endpoints compliant)
+- ✗ ~~Pagination enforced (1-100 limit, default 20, all endpoints compliant)~~ — **withdrawn 2026-10-19, see erratum at the top of this document**
 - ✓ TTL indexes for auto-cleanup (sessions, rate-limit counters)
 
 **Recommended post-MVP optimizations:**

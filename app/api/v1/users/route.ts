@@ -8,14 +8,28 @@ import {
   zodErrorToAppError,
 } from "@/lib/errors";
 import { createUser, listUsers } from "@/services/userService";
-import { createUserSchema } from "@/validations/userSchema";
+import {
+  createUserSchema,
+  listUsersQuerySchema,
+} from "@/validations/userSchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request);
   requireRole(user, ["HOST"]);
 
-  const users = await listUsers();
-  return successResponse({ users });
+  const queryObject = Object.fromEntries(
+    request.nextUrl.searchParams.entries(),
+  );
+  const parsedQuery = listUsersQuerySchema.safeParse(queryObject);
+  if (!parsedQuery.success) {
+    throw zodErrorToAppError(parsedQuery.error);
+  }
+
+  const result = await listUsers(parsedQuery.data);
+  return successResponse({
+    users: result.items,
+    pagination: result.pagination,
+  });
 });
 
 export const POST = withErrorHandling(async (request: NextRequest) => {

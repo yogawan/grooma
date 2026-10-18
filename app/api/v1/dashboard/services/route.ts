@@ -27,6 +27,15 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     throw zodErrorToAppError(parsed.error);
   }
 
-  const services = await getServicePerformance(user, parsed.data);
-  return successResponse({ services });
+  const result = await getServicePerformance(user, parsed.data);
+  // `services` stays the array it always was; the cap metadata is a sibling
+  // key so a client reading data.services is unaffected.
+  return successResponse({
+    services: result.items,
+    meta: {
+      limit: result.limit,
+      total: result.total,
+      truncated: result.truncated,
+    },
+  });
 });

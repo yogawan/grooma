@@ -6,7 +6,10 @@ import {
   withErrorHandling,
   zodErrorToAppError,
 } from "@/lib/errors";
-import { listInvoicesBySubscription } from "@/services/billingService";
+import {
+  emptyInvoicePage,
+  listInvoicesBySubscription,
+} from "@/services/billingService";
 import { getSubscriptionByHostId } from "@/services/subscriptionService";
 import { listSubscriptionInvoicesQuerySchema } from "@/validations/subscriptionSchema";
 
@@ -16,16 +19,9 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   // AGENT has no entry here; no other role can hold a session (§3.6).
   requireRole(user, ["HOST"]);
 
-  // Get HOST's subscription first
-  const subscription = await getSubscriptionByHostId(user.id);
-  if (!subscription) {
-    return successResponse({
-      invoices: [],
-      pagination: { page: 1, limit: 20, total: 0, pages: 0 },
-    });
-  }
-
-  // Parse query params
+  // Parsed before the no-subscription early return below, not after: a bad
+  // ?limit=abc used to get a 200 on that path and a 400 on the normal one,
+  // and the empty envelope could not echo a page/limit it had never read.
   const queryObject = Object.fromEntries(
     request.nextUrl.searchParams.entries(),
   );
@@ -34,10 +30,14 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     throw zodErrorToAppError(parsed.error);
   }
 
+  const subscription = await getSubscriptionByHostId(user.id);
+  if (!subscription) {
+    return successResponse(emptyInvoicePage(parsed.data));
+  }
+
   const result = await listInvoicesBySubscription(
     String(subscription._id),
-    parsed.data.page,
-    parsed.data.limit,
+    parsed.data,
   );
 
   return successResponse(result);

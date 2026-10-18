@@ -8,7 +8,10 @@ import {
   zodErrorToAppError,
 } from "@/lib/errors";
 import { createCustomer, listCustomers } from "@/services/customerService";
-import { createCustomerSchema } from "@/validations/customerSchema";
+import {
+  createCustomerSchema,
+  listCustomersQuerySchema,
+} from "@/validations/customerSchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request, {
@@ -16,9 +19,19 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   });
   requireRole(user, ["HOST", "AGENT"]);
 
-  const search = request.nextUrl.searchParams.get("search") ?? undefined;
-  const customers = await listCustomers(user.role, search);
-  return successResponse({ customers });
+  const queryObject = Object.fromEntries(
+    request.nextUrl.searchParams.entries(),
+  );
+  const parsedQuery = listCustomersQuerySchema.safeParse(queryObject);
+  if (!parsedQuery.success) {
+    throw zodErrorToAppError(parsedQuery.error);
+  }
+
+  const result = await listCustomers(user.role, parsedQuery.data);
+  return successResponse({
+    customers: result.items,
+    pagination: result.pagination,
+  });
 });
 
 export const POST = withErrorHandling(async (request: NextRequest) => {

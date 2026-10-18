@@ -8,12 +8,27 @@ import {
   zodErrorToAppError,
 } from "@/lib/errors";
 import { createBranch, listBranches } from "@/services/branchService";
-import { createBranchSchema } from "@/validations/branchSchema";
+import {
+  createBranchSchema,
+  listBranchesQuerySchema,
+} from "@/validations/branchSchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request);
-  const branches = await listBranches(user);
-  return successResponse({ branches });
+
+  const queryObject = Object.fromEntries(
+    request.nextUrl.searchParams.entries(),
+  );
+  const parsedQuery = listBranchesQuerySchema.safeParse(queryObject);
+  if (!parsedQuery.success) {
+    throw zodErrorToAppError(parsedQuery.error);
+  }
+
+  const result = await listBranches(user, parsedQuery.data);
+  return successResponse({
+    branches: result.items,
+    pagination: result.pagination,
+  });
 });
 
 export const POST = withErrorHandling(async (request: NextRequest) => {

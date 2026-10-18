@@ -27,6 +27,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     throw zodErrorToAppError(parsed.error);
   }
 
-  const inventory = await getInventorySummary(user, parsed.data);
-  return successResponse({ inventory });
+  const result = await getInventorySummary(user, parsed.data);
+  return successResponse({
+    inventory: result.items,
+    meta: {
+      limit: result.limit,
+      total: result.total,
+      truncated: result.truncated,
+    },
+  });
 });

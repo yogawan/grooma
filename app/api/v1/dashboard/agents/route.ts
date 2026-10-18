@@ -27,6 +27,13 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
     throw zodErrorToAppError(parsed.error);
   }
 
-  const agents = await getAgentPerformance(user, parsed.data);
-  return successResponse({ agents });
+  const result = await getAgentPerformance(user, parsed.data);
+  return successResponse({
+    agents: result.items,
+    meta: {
+      limit: result.limit,
+      total: result.total,
+      truncated: result.truncated,
+    },
+  });
 });

@@ -8,7 +8,10 @@ import {
   zodErrorToAppError,
 } from "@/lib/errors";
 import { createService, listServices } from "@/services/serviceService";
-import { createServiceSchema } from "@/validations/serviceSchema";
+import {
+  createServiceSchema,
+  listServicesQuerySchema,
+} from "@/validations/serviceSchema";
 
 export const GET = withErrorHandling(async (request: NextRequest) => {
   const user = await requireAuth(request, {
@@ -16,8 +19,19 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   });
   requireRole(user, ["HOST", "AGENT"]);
 
-  const services = await listServices(user.role);
-  return successResponse({ services });
+  const queryObject = Object.fromEntries(
+    request.nextUrl.searchParams.entries(),
+  );
+  const parsedQuery = listServicesQuerySchema.safeParse(queryObject);
+  if (!parsedQuery.success) {
+    throw zodErrorToAppError(parsedQuery.error);
+  }
+
+  const result = await listServices(user.role, parsedQuery.data);
+  return successResponse({
+    services: result.items,
+    pagination: result.pagination,
+  });
 });
 
 export const POST = withErrorHandling(async (request: NextRequest) => {

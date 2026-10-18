@@ -1,5 +1,6 @@
 // @/validations/branchSchema.ts
 import { z } from "zod";
+import { paginationQueryFields } from "@/lib/pagination";
 
 // Transaction code generation (Phase 3) formats dates in the branch's own
 // timezone, which throws at runtime if it isn't a real IANA zone — reject
@@ -35,3 +36,8 @@ export const setBranchStatusSchema = z
   .object({ status: z.enum(["ACTIVE", "INACTIVE"]) })
   .strict();
 export type SetBranchStatusInput = z.infer<typeof setBranchStatusSchema>;
+
+export const listBranchesQuerySchema = z.object({
+  ...paginationQueryFields,
+});
+export type ListBranchesQuery = z.infer<typeof listBranchesQuerySchema>;

@@ -2,9 +2,11 @@
 import type { SessionUser } from "@/lib/auth";
 import { Errors } from "@/lib/errors";
 import { connectDB } from "@/lib/mongodb";
+import { paginateQueries, paginationSkip, stableSort } from "@/lib/pagination";
 import ServiceModel from "@/models/Service";
 import type {
   CreateServiceInput,
+  ListServicesQuery,
   SetServiceStatusInput,
   UpdateServiceInput,
 } from "@/validations/serviceSchema";
@@ -20,11 +22,26 @@ export async function createService(input: CreateServiceInput) {
 // §7.6: "List active services" — AGENT can only ever pick an active one
 // when building a transaction, so the filter is forced regardless of what
 // the client sends. HOST manages the catalog and needs to see everything.
-export async function listServices(role: SessionUser["role"]) {
+export async function listServices(
+  role: SessionUser["role"],
+  query: ListServicesQuery,
+) {
   await connectDB();
 
-  const filter = role === "HOST" ? {} : { isActive: true };
-  return ServiceModel.find(filter).sort({ name: 1 });
+  // AGENT only ever sees the active catalogue (§7.6) — the filter is part of
+  // the count too, so `total` reflects what that role can actually reach
+  // rather than the whole collection.
+  const filter: Record<string, unknown> =
+    role === "HOST" ? {} : { isActive: true };
+
+  return paginateQueries(
+    ServiceModel.find(filter)
+      .sort(stableSort({ name: 1 }))
+      .skip(paginationSkip(query))
+      .limit(query.limit),
+    ServiceModel.countDocuments(filter),
+    query,
+  );
 }
 
 export async function getServiceById(id: string) {

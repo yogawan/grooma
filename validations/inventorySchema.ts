@@ -1,5 +1,6 @@
 // @/validations/inventorySchema.ts
 import { z } from "zod";
+import { paginationQueryFields } from "@/lib/pagination";
 
 const CATEGORY = ["HAIR_PRODUCT", "EQUIPMENT", "CONSUMABLE", "OTHER"] as const;
 
@@ -38,8 +39,7 @@ export const updateInventorySchema = z
 export type UpdateInventoryInput = z.infer<typeof updateInventorySchema>;
 
 export const listInventoryQuerySchema = z.object({
-  page: z.coerce.number().int().positive().optional().default(1),
-  limit: z.coerce.number().int().positive().max(100).optional().default(20),
+  ...paginationQueryFields,
   branchId: z.string().min(1).optional(),
   search: z.string().trim().min(1).optional(),
   lowStockOnly: z.coerce.boolean().optional(),
@@ -76,8 +76,7 @@ export const stockMovementSchema = z.discriminatedUnion("movementType", [
 export type StockMovementInput = z.infer<typeof stockMovementSchema>;
 
 export const listStockMovementsQuerySchema = z.object({
-  page: z.coerce.number().int().positive().optional().default(1),
-  limit: z.coerce.number().int().positive().max(100).optional().default(20),
+  ...paginationQueryFields,
 });
 export type ListStockMovementsQuery = z.infer<
   typeof listStockMovementsQuerySchema

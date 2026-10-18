@@ -9,6 +9,7 @@ import {
 } from "@/lib/idempotency";
 import { logger } from "@/lib/logger";
 import { connectDB } from "@/lib/mongodb";
+import { paginateQueries, paginationSkip, stableSort } from "@/lib/pagination";
 import { getPaymentIntegrationMode } from "@/lib/paymentConfig";
 import {
   computeLoyaltyPoints,
@@ -260,29 +261,18 @@ export async function listTransactions(
     filter.createdAt = createdAt;
   }
 
-  const skip = (query.page - 1) * query.limit;
-
-  const [items, total] = await Promise.all([
+  return paginateQueries(
     TransactionModel.find(filter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
+      .sort(stableSort({ createdAt: -1 }))
+      .skip(paginationSkip(query))
       .limit(query.limit)
       .populate("branch", "name")
       .populate("agent", "name")
       .populate("customer", "name phone")
       .lean(),
     TransactionModel.countDocuments(filter),
-  ]);
-
-  return {
-    items,
-    pagination: {
-      page: query.page,
-      limit: query.limit,
-      total,
-      totalPages: Math.ceil(total / query.limit),
-    },
-  };
+    query,
+  );
 }
 
 export async function getTransactionById(user: SessionUser, id: string) {

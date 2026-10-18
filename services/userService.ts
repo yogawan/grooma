@@ -3,10 +3,12 @@ import type { SessionUser } from "@/lib/auth";
 import { hashPassword, SERVICE_ROLES } from "@/lib/auth";
 import { Errors } from "@/lib/errors";
 import { connectDB } from "@/lib/mongodb";
+import { paginateQueries, paginationSkip, stableSort } from "@/lib/pagination";
 import BranchModel from "@/models/Branch";
 import UserModel from "@/models/User";
 import type {
   CreateUserInput,
+  ListUsersQuery,
   SetUserStatusInput,
   UpdateProfileInput,
   UpdateUserInput,
@@ -98,13 +100,23 @@ export async function createUser(input: CreateUserInput) {
   return serializeUser(user);
 }
 
-export async function listUsers() {
+export async function listUsers(query: ListUsersQuery) {
   await connectDB();
-  const users = await UserModel.find(SERVICE_ROLE_FILTER)
-    .sort({ createdAt: -1 })
-    .populate("branch", "name");
 
-  return users.map(serializeUser);
+  // SERVICE_ROLE_FILTER is applied to the count as well, so `total` cannot
+  // leak the existence of platform-internal accounts by being larger than
+  // the rows this namespace is willing to return.
+  const { items, pagination } = await paginateQueries(
+    UserModel.find(SERVICE_ROLE_FILTER)
+      .sort(stableSort({ createdAt: -1 }))
+      .skip(paginationSkip(query))
+      .limit(query.limit)
+      .populate("branch", "name"),
+    UserModel.countDocuments(SERVICE_ROLE_FILTER),
+    query,
+  );
+
+  return { items: items.map(serializeUser), pagination };
 }
 
 export async function getUserById(id: string) {

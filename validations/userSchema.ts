@@ -1,5 +1,6 @@
 // @/validations/userSchema.ts
 import { z } from "zod";
+import { paginationQueryFields } from "@/lib/pagination";
 
 // The only two roles this service knows. Platform-internal roles are created
 // by the admin backend against the same database and are not assignable here
@@ -35,6 +36,11 @@ export const setUserStatusSchema = z
   .object({ status: z.enum(["ACTIVE", "INACTIVE"]) })
   .strict();
 export type SetUserStatusInput = z.infer<typeof setUserStatusSchema>;
+
+export const listUsersQuerySchema = z.object({
+  ...paginationQueryFields,
+});
+export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 
 // §13: profile updates can never touch role/branch/username/status — those
 // keys are simply absent from this schema, and .strict() rejects them

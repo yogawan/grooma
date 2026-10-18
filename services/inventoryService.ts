@@ -4,6 +4,7 @@ import type { SessionUser } from "@/lib/auth";
 import { requireBranchAccess } from "@/lib/authorization";
 import { Errors } from "@/lib/errors";
 import { connectDB } from "@/lib/mongodb";
+import { paginateQueries, paginationSkip, stableSort } from "@/lib/pagination";
 import { escapeRegex, extractRefId } from "@/lib/utils";
 import BranchModel from "@/models/Branch";
 import InventoryModel from "@/models/Inventory";
@@ -122,26 +123,15 @@ export async function listItems(user: SessionUser, query: ListInventoryQuery) {
     filter.$expr = { $lte: ["$quantity", "$minimumStock"] };
   }
 
-  const skip = (query.page - 1) * query.limit;
-
-  const [items, total] = await Promise.all([
+  return paginateQueries(
     InventoryModel.find(filter)
-      .sort({ name: 1 })
-      .skip(skip)
+      .sort(stableSort({ name: 1 }))
+      .skip(paginationSkip(query))
       .limit(query.limit)
       .populate("branch", "name"),
     InventoryModel.countDocuments(filter),
-  ]);
-
-  return {
-    items,
-    pagination: {
-      page: query.page,
-      limit: query.limit,
-      total,
-      totalPages: Math.ceil(total / query.limit),
-    },
-  };
+    query,
+  );
 }
 
 export async function getItemById(user: SessionUser, id: string) {
@@ -298,24 +288,13 @@ export async function listStockMovements(
   }
   requireBranchAccess(user, extractRefId(item.branch));
 
-  const skip = (query.page - 1) * query.limit;
-
-  const [items, total] = await Promise.all([
+  return paginateQueries(
     InventoryMovementModel.find({ inventory: itemId })
-      .sort({ createdAt: -1 })
-      .skip(skip)
+      .sort(stableSort({ createdAt: -1 }))
+      .skip(paginationSkip(query))
       .limit(query.limit)
       .populate("performedBy", "name"),
     InventoryMovementModel.countDocuments({ inventory: itemId }),
-  ]);
-
-  return {
-    items,
-    pagination: {
-      page: query.page,
-      limit: query.limit,
-      total,
-      totalPages: Math.ceil(total / query.limit),
-    },
-  };
+    query,
+  );
 }

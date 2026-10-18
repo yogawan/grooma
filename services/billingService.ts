@@ -9,6 +9,13 @@ import { Errors } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { createQrisCharge, getTransactionStatus } from "@/lib/midtrans";
 import { connectDB } from "@/lib/mongodb";
+import {
+  buildPaginationMeta,
+  type PaginationMeta,
+  paginateQueries,
+  paginationSkip,
+  stableSort,
+} from "@/lib/pagination";
 import SubscriptionModel from "@/models/Subscription";
 import type { ISubscriptionInvoice } from "@/models/SubscriptionInvoice";
 import SubscriptionInvoiceModel from "@/models/SubscriptionInvoice";
@@ -16,12 +23,19 @@ import SubscriptionPlanModel from "@/models/SubscriptionPlan";
 // Type-only import: no runtime cycle with paymentService, which dynamically
 // imports this module.
 import type { NotificationResult } from "@/services/paymentService";
+import type { ListSubscriptionInvoicesQuery } from "@/validations/subscriptionSchema";
 
-interface PaginationInfo {
-  page: number;
-  limit: number;
-  total: number;
+// `pages` is the legacy name for `totalPages` — this service was the only one
+// that ever used it (docs/PAGINATION-CONTRACT.md §9.1). Both are emitted for
+// one release so mobile builds already in the field keep working; `pages` and
+// this interface go away once they have migrated to `totalPages`.
+interface PaginationInfoWithLegacyPages extends PaginationMeta {
+  /** @deprecated Use `totalPages`. Identical value, kept for compatibility. */
   pages: number;
+}
+
+function withLegacyPages(meta: PaginationMeta): PaginationInfoWithLegacyPages {
+  return { ...meta, pages: meta.totalPages };
 }
 
 export async function generateSubscriptionInvoice(
@@ -120,31 +134,48 @@ export async function getInvoiceById(
   return invoice;
 }
 
+// Takes the parsed query object rather than loose (page, limit) positionals so
+// a new filter cannot be added to the schema and then silently dropped on the
+// way in — which is exactly what happened to `status` before this change
+// (docs/PAGINATION-CONTRACT.md §9.3: it validated, then never reached the
+// query, so ?status=PAID returned invoices of every status with a 200).
 export async function listInvoicesBySubscription(
   subscriptionId: string,
-  page: number = 1,
-  limit: number = 20,
-): Promise<{ invoices: ISubscriptionInvoice[]; pagination: PaginationInfo }> {
+  query: ListSubscriptionInvoicesQuery,
+): Promise<{
+  invoices: ISubscriptionInvoice[];
+  pagination: PaginationInfoWithLegacyPages;
+}> {
   await connectDB();
 
-  const skip = (page - 1) * limit;
-  const [invoices, total] = await Promise.all([
-    SubscriptionInvoiceModel.find({ subscription: subscriptionId })
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 })
-      .lean(),
-    SubscriptionInvoiceModel.countDocuments({ subscription: subscriptionId }),
-  ]);
+  const filter: Record<string, unknown> = { subscription: subscriptionId };
+  if (query.status) {
+    filter.status = query.status;
+  }
 
+  const { items, pagination } = await paginateQueries(
+    SubscriptionInvoiceModel.find(filter)
+      .sort(stableSort({ createdAt: -1 }))
+      .skip(paginationSkip(query))
+      .limit(query.limit)
+      .lean(),
+    SubscriptionInvoiceModel.countDocuments(filter),
+    query,
+  );
+
+  return { invoices: items, pagination: withLegacyPages(pagination) };
+}
+
+// The "HOST has no Subscription record yet" path in the route needs a
+// well-formed envelope too, built from the query the client actually sent
+// rather than hardcoded defaults (§9.2).
+export function emptyInvoicePage(query: ListSubscriptionInvoicesQuery): {
+  invoices: ISubscriptionInvoice[];
+  pagination: PaginationInfoWithLegacyPages;
+} {
   return {
-    invoices,
-    pagination: {
-      page,
-      limit,
-      total,
-      pages: Math.ceil(total / limit),
-    },
+    invoices: [],
+    pagination: withLegacyPages(buildPaginationMeta(query, 0)),
   };
 }
 

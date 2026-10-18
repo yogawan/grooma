@@ -1,5 +1,6 @@
 // @/validations/approvalSchema.ts
 import { z } from "zod";
+import { paginationQueryFields } from "@/lib/pagination";
 
 // Whitelist of fields a change request may touch — deliberately excludes
 // paymentMethod (too tightly coupled to the gateway flow already in
@@ -52,8 +53,7 @@ export type RejectChangeRequestInput = z.infer<
 >;
 
 export const listChangeRequestsQuerySchema = z.object({
-  page: z.coerce.number().int().positive().optional().default(1),
-  limit: z.coerce.number().int().positive().max(100).optional().default(20),
+  ...paginationQueryFields,
 });
 export type ListChangeRequestsQuery = z.infer<
   typeof listChangeRequestsQuerySchema

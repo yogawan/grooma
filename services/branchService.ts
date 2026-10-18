@@ -3,9 +3,16 @@ import type { SessionUser } from "@/lib/auth";
 import { requireBranchAccess } from "@/lib/authorization";
 import { Errors } from "@/lib/errors";
 import { connectDB } from "@/lib/mongodb";
+import {
+  paginateQueries,
+  paginationSkip,
+  stableSort,
+  toPaginated,
+} from "@/lib/pagination";
 import BranchModel from "@/models/Branch";
 import type {
   CreateBranchInput,
+  ListBranchesQuery,
   SetBranchStatusInput,
   UpdateBranchInput,
 } from "@/validations/branchSchema";
@@ -16,18 +23,33 @@ export async function createBranch(input: CreateBranchInput) {
 }
 
 // §7.4: "List accessible branches" — HOST sees every branch, AGENT only its own.
-export async function listBranches(user: SessionUser) {
+//
+// Both roles go through the same paginated path so the envelope is identical
+// either way: an AGENT's one-row result still reports total/totalPages rather
+// than a bare array the client has to special-case.
+export async function listBranches(
+  user: SessionUser,
+  query: ListBranchesQuery,
+) {
   await connectDB();
 
-  if (user.role === "HOST") {
-    return BranchModel.find().sort({ name: 1 });
+  // An AGENT with no assigned branch has nothing accessible — an empty page,
+  // not a filter-less query that would expose every branch.
+  if (user.role !== "HOST" && !user.branch) {
+    return toPaginated([], query, 0);
   }
 
-  if (!user.branch) {
-    return [];
-  }
+  const filter: Record<string, unknown> =
+    user.role === "HOST" ? {} : { _id: user.branch };
 
-  return BranchModel.find({ _id: user.branch });
+  return paginateQueries(
+    BranchModel.find(filter)
+      .sort(stableSort({ name: 1 }))
+      .skip(paginationSkip(query))
+      .limit(query.limit),
+    BranchModel.countDocuments(filter),
+    query,
+  );
 }
 
 export async function getBranchById(user: SessionUser, id: string) {

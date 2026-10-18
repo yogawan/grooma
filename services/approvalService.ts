@@ -3,6 +3,7 @@ import type { SessionUser } from "@/lib/auth";
 import { requireBranchAccess } from "@/lib/authorization";
 import { Errors } from "@/lib/errors";
 import { connectDB } from "@/lib/mongodb";
+import { paginateQueries, paginationSkip, stableSort } from "@/lib/pagination";
 import { computeServicePricing, extractRefId } from "@/lib/utils";
 import CustomerModel from "@/models/Customer";
 import ServiceModel from "@/models/Service";
@@ -87,28 +88,18 @@ export async function listPendingChangeRequests(
   await connectDB();
 
   const filter = { "changeRequest.status": "PENDING" };
-  const skip = (query.page - 1) * query.limit;
 
-  const [items, total] = await Promise.all([
+  return paginateQueries(
     TransactionModel.find(filter)
-      .sort({ "changeRequest.requestedAt": -1 })
-      .skip(skip)
+      .sort(stableSort({ "changeRequest.requestedAt": -1 }))
+      .skip(paginationSkip(query))
       .limit(query.limit)
       .populate("branch", "name")
       .populate("agent", "name")
       .populate("changeRequest.requestedBy", "name"),
     TransactionModel.countDocuments(filter),
-  ]);
-
-  return {
-    items,
-    pagination: {
-      page: query.page,
-      limit: query.limit,
-      total,
-      totalPages: Math.ceil(total / query.limit),
-    },
-  };
+    query,
+  );
 }
 
 // §7.9: HOST can view any request's detail; an AGENT may only view one

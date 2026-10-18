@@ -2,10 +2,12 @@
 import type { SessionUser } from "@/lib/auth";
 import { Errors } from "@/lib/errors";
 import { connectDB } from "@/lib/mongodb";
+import { paginateQueries, paginationSkip, stableSort } from "@/lib/pagination";
 import { escapeRegex } from "@/lib/utils";
 import CustomerModel from "@/models/Customer";
 import type {
   CreateCustomerInput,
+  ListCustomersQuery,
   SetCustomerStatusInput,
   UpdateCustomerInput,
 } from "@/validations/customerSchema";
@@ -99,17 +101,17 @@ export async function createCustomer(
 
 export async function listCustomers(
   role: SessionUser["role"],
-  search?: string,
+  query: ListCustomersQuery,
 ) {
   await connectDB();
 
   const filter: Record<string, unknown> = {};
-  if (search) {
+  if (query.search) {
     const orConditions: Record<string, unknown>[] = [
-      { name: { $regex: escapeRegex(search), $options: "i" } },
+      { name: { $regex: escapeRegex(query.search), $options: "i" } },
     ];
 
-    const variants = phoneVariants(search);
+    const variants = phoneVariants(query.search);
     if (variants.length > 0) {
       orConditions.push({ phone: { $in: variants } });
     }
@@ -117,8 +119,22 @@ export async function listCustomers(
     filter.$or = orConditions;
   }
 
-  const customers = await CustomerModel.find(filter).sort({ name: 1 });
-  return customers.map((customer) => serializeCustomer(customer, role));
+  // serializeCustomer runs after pagination, on the page's rows only — field
+  // redaction is per-row and order-independent, so there is no reason to
+  // hydrate the whole collection to slice 20 out of it.
+  const { items, pagination } = await paginateQueries(
+    CustomerModel.find(filter)
+      .sort(stableSort({ name: 1 }))
+      .skip(paginationSkip(query))
+      .limit(query.limit),
+    CustomerModel.countDocuments(filter),
+    query,
+  );
+
+  return {
+    items: items.map((customer) => serializeCustomer(customer, role)),
+    pagination,
+  };
 }
 
 export async function getCustomerById(id: string, role: SessionUser["role"]) {

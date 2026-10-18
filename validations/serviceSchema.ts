@@ -1,5 +1,6 @@
 // @/validations/serviceSchema.ts
 import { z } from "zod";
+import { paginationQueryFields } from "@/lib/pagination";
 
 const revenueSharingSchema = z.object({
   ownerPercentage: z.number().min(0).max(100),
@@ -34,3 +35,8 @@ export const setServiceStatusSchema = z
   .object({ isActive: z.boolean() })
   .strict();
 export type SetServiceStatusInput = z.infer<typeof setServiceStatusSchema>;
+
+export const listServicesQuerySchema = z.object({
+  ...paginationQueryFields,
+});
+export type ListServicesQuery = z.infer<typeof listServicesQuerySchema>;

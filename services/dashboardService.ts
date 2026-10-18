@@ -1,4 +1,5 @@
 // @/services/dashboardService.ts
+import type { PipelineStage } from "mongoose";
 import type { SessionUser } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import InventoryModel from "@/models/Inventory";
@@ -71,6 +72,53 @@ export function buildPeriodGroupingId(period: Period): Record<string, unknown> {
     case "YEAR":
       return { $year: "$createdAt" };
   }
+}
+
+// Dashboard rankings are capped, not paginated (docs/PAGINATION-CONTRACT.md
+// §6): asking for page 2 of a "top 10" is incoherent. But a capped list that
+// looks identical to a complete one is misleading, so every cap reports the
+// untruncated group count alongside the rows.
+//
+// $facet runs both branches over the same already-$grouped documents, so the
+// count costs one extra pass over N groups rather than re-running the $match
+// and $group from scratch.
+interface CappedResult<T> {
+  items: T[];
+  limit: number;
+  total: number;
+  truncated: boolean;
+}
+
+// Takes sort and projection separately rather than a free-form stage list so
+// the stage order is correct by construction: $limit has to sit between them,
+// or the projection is computed for every group and all but `limit` of that
+// work is thrown away.
+function cappedFacet(
+  limit: number,
+  sort: Record<string, 1 | -1>,
+  project: Record<string, unknown>,
+): PipelineStage.Facet {
+  return {
+    $facet: {
+      rows: [{ $sort: sort }, { $limit: limit }, { $project: project }],
+      count: [{ $count: "total" }],
+    },
+  };
+}
+
+function readCappedFacet<T>(
+  facetOutput: { rows?: T[]; count?: { total: number }[] }[],
+  limit: number,
+): CappedResult<T> {
+  // An empty collection yields one facet document whose branches are both
+  // empty arrays — not a missing document — but guard anyway so a shape
+  // surprise degrades to "no data" instead of throwing.
+  const facet = facetOutput[0] ?? {};
+  const items = facet.rows ?? [];
+  // $count emits no document at all when there is nothing to count.
+  const total = facet.count?.[0]?.total ?? 0;
+
+  return { items, limit, total, truncated: total > items.length };
 }
 
 // §12.4: exclude CANCELLED, don't count PENDING as received
@@ -228,20 +276,20 @@ export async function getServicePerformance(
         avgOrderValue: { $avg: "$total" },
       },
     },
-    { $sort: { revenue: -1 } },
-    { $limit: 10 },
-    {
-      $project: {
+    cappedFacet(
+      query.limit,
+      { revenue: -1, _id: -1 },
+      {
         _id: 1,
         serviceName: 1,
         count: 1,
         revenue: { $round: ["$revenue", 0] },
         avgOrderValue: { $round: ["$avgOrderValue", 0] },
       },
-    },
+    ),
   ]);
 
-  return performance;
+  return readCappedFacet(performance, query.limit);
 }
 
 export async function getAgentPerformance(
@@ -285,19 +333,20 @@ export async function getAgentPerformance(
         },
       },
     },
-    { $sort: { totalRevenue: -1 } },
-    {
-      $project: {
+    cappedFacet(
+      query.limit,
+      { totalRevenue: -1, _id: -1 },
+      {
         _id: 1,
         agentName: 1,
         transactionCount: 1,
         totalRevenue: { $round: ["$totalRevenue", 0] },
         agentRevenue: { $round: ["$agentRevenue", 0] },
       },
-    },
+    ),
   ]);
 
-  return performance;
+  return readCappedFacet(performance, query.limit);
 }
 
 export async function getTransactionStats(
@@ -352,10 +401,21 @@ export async function getInventorySummary(
     filter.branch = user.branch;
   }
 
-  const lowStockItems = await InventoryModel.find(filter)
-    .populate("branch", "name")
-    .sort({ quantity: 1 })
-    .limit(20);
+  // Not a top-N ranking but an actionable worklist, so the untruncated count
+  // matters even more here: a HOST with 60 low-stock items used to see 20 with
+  // nothing in the response hinting the other 40 existed.
+  const [lowStockItems, total] = await Promise.all([
+    InventoryModel.find(filter)
+      .populate("branch", "name")
+      .sort({ quantity: 1, _id: 1 })
+      .limit(query.limit),
+    InventoryModel.countDocuments(filter),
+  ]);
 
-  return lowStockItems;
+  return {
+    items: lowStockItems,
+    limit: query.limit,
+    total,
+    truncated: total > lowStockItems.length,
+  };
 }

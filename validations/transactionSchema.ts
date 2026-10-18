@@ -1,5 +1,6 @@
 // @/validations/transactionSchema.ts
 import { z } from "zod";
+import { paginationQueryFields } from "@/lib/pagination";
 
 // §8.3: the backend never trusts agentId, branchId, total, ownerRevenue,
 // employeeRevenue, or serviceSnapshot from the client — they simply have no
@@ -20,8 +21,7 @@ export const createTransactionSchema = z
 export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
 
 export const listTransactionsQuerySchema = z.object({
-  page: z.coerce.number().int().positive().optional().default(1),
-  limit: z.coerce.number().int().positive().max(100).optional().default(20),
+  ...paginationQueryFields,
   search: z.string().trim().min(1).optional(),
   paymentStatus: z
     .enum(["PENDING", "PAID", "FAILED", "REFUNDED", "PARTIALLY_REFUNDED"])

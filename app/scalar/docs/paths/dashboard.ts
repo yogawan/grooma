@@ -118,9 +118,12 @@ export const dashboardPaths = {
                           },
                           paymentBreakdown: {
                             type: "array",
+                            description:
+                              "Always exactly one row per payment method (CASH, QRIS), in that order — zero-filled when a method has no transactions in range.",
                             items: {
                               type: "object",
                               properties: {
+                                _id: { type: "string", enum: ["CASH", "QRIS"] },
                                 count: { type: "integer" },
                                 revenue: { type: "number" },
                               },

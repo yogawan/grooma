@@ -184,6 +184,34 @@ export async function getSummary(user: SessionUser, query: SummaryQuery) {
   );
 }
 
+const PAYMENT_METHODS = ["CASH", "QRIS"] as const;
+
+interface PaymentBreakdownRow {
+  _id: string;
+  count: number;
+  revenue: number;
+}
+
+// $group only emits a row for a method that has at least one matching
+// transaction, so a branch/period with CASH sales but zero QRIS ones would
+// otherwise drop the QRIS key entirely — the mobile dashboard renders a
+// fixed Cash vs QRIS comparison and can't tell "0" from "missing". Exported
+// (not just inlined in getRevenue) so the zero-fill is unit-testable
+// without a real MongoDB connection, same reasoning as
+// buildPeriodGroupingId above.
+export function fillPaymentBreakdown(
+  rows: PaymentBreakdownRow[],
+): PaymentBreakdownRow[] {
+  return PAYMENT_METHODS.map(
+    (method) =>
+      rows.find((row) => row._id === method) ?? {
+        _id: method,
+        count: 0,
+        revenue: 0,
+      },
+  );
+}
+
 export async function getRevenue(user: SessionUser, query: RevenueQuery) {
   await connectDB();
 
@@ -224,8 +252,8 @@ export async function getRevenue(user: SessionUser, query: RevenueQuery) {
     { $sort: { _id: 1 } },
   ]);
 
-  // Payment method breakdown
-  const paymentBreakdown = await TransactionModel.aggregate([
+  // Payment method breakdown, zero-filled (see fillPaymentBreakdown).
+  const paymentBreakdownRaw = await TransactionModel.aggregate([
     { $match: match },
     {
       $group: {
@@ -239,6 +267,8 @@ export async function getRevenue(user: SessionUser, query: RevenueQuery) {
       },
     },
   ]);
+
+  const paymentBreakdown = fillPaymentBreakdown(paymentBreakdownRaw);
 
   return {
     byPeriod: revenueByPeriod,

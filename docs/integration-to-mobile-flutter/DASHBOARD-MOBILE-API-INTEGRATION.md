@@ -129,7 +129,7 @@ Response `200`:
 | `MONTH` | `{ year: number, month: number }` | `{ "year": 2026, "month": 10 }` |
 | `YEAR` | `number` | `2026` |
 
-`paymentBreakdown[]._id` selalu salah satu dari `"CASH" \| "QRIS"`.
+`paymentBreakdown[]._id` selalu salah satu dari `"CASH" \| "QRIS"`. Array ini **selalu berisi tepat 2 baris** dalam urutan CASH lalu QRIS, walaupun salah satunya belum pernah dipakai di rentang tanggal tersebut — baris yang kosong tetap muncul dengan `count: 0, revenue: 0` (bukan hilang dari array). App tidak perlu menangani kasus "key hilang".
 
 ### ⚠️ Rentang Terlalu Lebar Sekarang Ditolak `400` (baru 2026-10-19)
 
